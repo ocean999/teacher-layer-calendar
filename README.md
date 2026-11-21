@@ -1,0 +1,2 @@
+# teacher-layer-calendar
+教师双图层时间轴桌面日历（Apple Liquid Glass 3档主题、自适应缩放、防误触固定锁、智能批量排作息、节次磁吸调课、班主任班级课表、Excel/Word/拍照三合一导入、设置内在线一键更新、坚果云 WebDAV 自动同步）
