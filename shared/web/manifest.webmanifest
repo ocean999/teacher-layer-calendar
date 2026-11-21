@@ -1,0 +1,9 @@
+{
+  "name": "教师双图层日历",
+  "short_name": "双图层日历",
+  "description": "底层课表（可调课）+ 顶层临时干活时间轴重叠日历，支持坚果云 WebDAV 自动同步",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0ea5e9"
+}
