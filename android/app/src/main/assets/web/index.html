@@ -333,6 +333,22 @@
             </div>
           </div>
           <div class="field">
+            <label>纯色皮肤 <span id="skin-color-name" style="color:var(--text-muted);font-size:11.5px;margin-left:6px;">默认</span></label>
+            <div class="skin-swatch-row">
+              <button class="skin-swatch skin-swatch-reset active" data-skin-color="" title="默认主题色">默认</button>
+              <button class="skin-swatch" data-skin-color="#ffffff" title="极简纯白" style="background:#ffffff;"></button>
+              <button class="skin-swatch" data-skin-color="#f5f1e6" title="护眼米纸" style="background:#f5f1e6;"></button>
+              <button class="skin-swatch" data-skin-color="#e7f3ec" title="豆沙护眼绿" style="background:#e7f3ec;"></button>
+              <button class="skin-swatch" data-skin-color="#e6f0fb" title="晴空浅蓝" style="background:#e6f0fb;"></button>
+              <button class="skin-swatch" data-skin-color="#f7eaf2" title="樱花柔粉" style="background:#f7eaf2;"></button>
+              <button class="skin-swatch" data-skin-color="#ebe8f7" title="淡雅薰衣紫" style="background:#ebe8f7;"></button>
+              <button class="skin-swatch" data-skin-color="#5d8aa8" title="雾霾青蓝" style="background:#5d8aa8;"></button>
+              <button class="skin-swatch" data-skin-color="#1e293b" title="深海石板" style="background:#1e293b;"></button>
+              <button class="skin-swatch" data-skin-color="#121212" title="极夜纯黑" style="background:#121212;"></button>
+              <input type="color" id="inp-custom-skin" class="skin-color-picker" value="#e7f3ec" title="自定义任意纯色" />
+            </div>
+          </div>
+          <div class="field">
             <label>背景风格（透明 / 半透明预设）</label>
             <div class="seg-group" id="bg-style-seg" style="align-self:flex-start;">
               <button class="seg-btn" data-bg-style="transparent">🧊 全透明</button>
@@ -383,7 +399,7 @@
         <!-- 设置子页 4：关于与在线检查更新 -->
         <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
           <div class="hint-box">
-            当前版本：<strong id="upd-cur-ver">v1.4.1</strong><br/>
+            当前版本：<strong id="upd-cur-ver">v1.4.2</strong><br/>
             在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
           </div>
           <div class="field">

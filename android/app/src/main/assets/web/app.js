@@ -348,12 +348,41 @@
     await persistAndScheduleSync(false);
   }
 
+  function hexToRgb(hex) {
+    const m = String(hex || '').trim().match(/^#?([0-9a-f]{6})$/i);
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return { r, g, b, lum: (0.299 * r + 0.587 * g + 0.114 * b) / 255 };
+  }
+
   // ===== 应用主题与 UI 控件同步 =====
   function applyUiControlsFromState() {
     const ui = appState.config.ui;
     const themeMode = ['light', 'dark', 'auto'].includes(ui.theme) ? ui.theme : 'auto';
     const resolvedTheme = resolveEffectiveTheme(themeMode);
-    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    const rootEl = document.documentElement;
+    const skinRgb = hexToRgb(ui.skinColor);
+
+    if (skinRgb) {
+      rootEl.setAttribute('data-theme', skinRgb.lum < 0.52 ? 'dark' : 'light');
+      rootEl.style.setProperty('--glass-bg', `rgba(${skinRgb.r}, ${skinRgb.g}, ${skinRgb.b}, var(--bg-alpha))`);
+      rootEl.style.setProperty('--glass-header', `rgba(${skinRgb.r}, ${skinRgb.g}, ${skinRgb.b}, min(0.98, calc(var(--bg-alpha) * 1.06 + 0.04)))`);
+      rootEl.style.setProperty('--glass-subbar', `rgba(${skinRgb.r}, ${skinRgb.g}, ${skinRgb.b}, min(0.94, calc(var(--bg-alpha) * 1.02 + 0.02)))`);
+    } else {
+      rootEl.setAttribute('data-theme', resolvedTheme);
+      rootEl.style.removeProperty('--glass-bg');
+      rootEl.style.removeProperty('--glass-header');
+      rootEl.style.removeProperty('--glass-subbar');
+    }
+
+    document.querySelectorAll('[data-skin-color]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.skinColor.toLowerCase() === String(ui.skinColor || '').toLowerCase());
+    });
+    const skinNameEl = document.getElementById('skin-color-name');
+    if (skinNameEl) skinNameEl.textContent = ui.skinColorName || '默认';
+    const customSkinEl = document.getElementById('inp-custom-skin');
+    if (customSkinEl && skinRgb) customSkinEl.value = ui.skinColor;
 
     document.querySelectorAll('[data-theme-mode]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.themeMode === themeMode);
@@ -1163,6 +1192,8 @@
       const el = document.getElementById(`set-panel-${t}`);
       if (el) el.style.display = t === activeSettingsTab ? 'flex' : 'none';
     });
+    const setModal = document.getElementById('modal-settings');
+    if (setModal) setModal.classList.toggle('live-preview-mode', activeSettingsTab === 'theme' || activeSettingsTab === 'desktop');
   }
 
   async function openSettingsModal(tab = 'sync') {
@@ -1789,6 +1820,10 @@
     document.querySelectorAll('[data-theme-mode]').forEach(btn => {
       btn.addEventListener('click', async () => {
         appState.config.ui.theme = btn.dataset.themeMode;
+        if (appState.config.ui.skinColor) {
+          appState.config.ui.skinColor = '';
+          appState.config.ui.skinColorName = '默认';
+        }
         render();
         await persistAndScheduleSync(false);
       });
@@ -1796,6 +1831,29 @@
     if (darkMediaQuery && darkMediaQuery.addEventListener) {
       darkMediaQuery.addEventListener('change', () => {
         if (appState?.config?.ui?.theme === 'auto') render();
+      });
+    }
+
+    // 纯色皮肤选择 + 自定义拾色器
+    document.querySelectorAll('[data-skin-color]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const hex = btn.dataset.skinColor || '';
+        appState.config.ui.skinColor = hex;
+        appState.config.ui.skinColorName = hex ? (btn.title || hex) : '默认';
+        if (hex) appState.config.ui.bgAlpha = 98;
+        else if ((appState.config.ui.bgAlpha ?? 72) >= 95) appState.config.ui.bgAlpha = 72;
+        render();
+        await persistAndScheduleSync(false);
+      });
+    });
+    const customSkinInp = document.getElementById('inp-custom-skin');
+    if (customSkinInp) {
+      customSkinInp.addEventListener('input', async (e) => {
+        appState.config.ui.skinColor = e.target.value;
+        appState.config.ui.skinColorName = `自定义 ${e.target.value.toUpperCase()}`;
+        if ((appState.config.ui.bgAlpha ?? 72) < 20) appState.config.ui.bgAlpha = 98;
+        render();
+        await persistAndScheduleSync(false);
       });
     }
 
@@ -1810,6 +1868,14 @@
         await persistAndScheduleSync(false);
       });
     });
+
+    ['rng-bg-alpha', 'rng-bg-alpha-set'].forEach(id => {
+      const sliderEl = document.getElementById(id);
+      if (sliderEl) {
+        sliderEl.addEventListener('pointerdown', () => document.getElementById('modal-settings')?.classList.add('adjusting-alpha'));
+      }
+    });
+    window.addEventListener('pointerup', () => document.getElementById('modal-settings')?.classList.remove('adjusting-alpha'));
 
     // 互斥「班主任班级课表」勾选逻辑 + 横幅内三合一智能导入按钮
     document.getElementById('chk-homeroom').addEventListener('change', (e) => setHomeroomMode(e.target.checked));

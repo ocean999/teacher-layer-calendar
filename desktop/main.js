@@ -72,6 +72,8 @@ function createDefaultState() {
       },
       ui: {
         theme: 'auto', // 3档：light(白天) / dark(黑夜) / auto(自动识别)
+        skinColor: '',
+        skinColorName: '默认',
         showCourse: true,
         showWork: true,
         homeroomMode: false, // 互斥模式：勾选时隐藏底层课表和顶层干活，仅呈现班主任班级全周课表

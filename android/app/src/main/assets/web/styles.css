@@ -122,8 +122,8 @@ body.mode-web, body.mode-android {
 }
 
 html[data-bg-style="transparent"] #app {
-  backdrop-filter: blur(4px) saturate(130%);
-  -webkit-backdrop-filter: blur(4px) saturate(130%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: inset 0 0 0 1px var(--border-soft);
 }
 html[data-bg-style="transparent"][data-theme="light"] #app {
@@ -133,8 +133,8 @@ html[data-bg-style="transparent"][data-theme="dark"] #app {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
 }
 html[data-bg-style="translucent"] #app {
-  backdrop-filter: blur(14px) saturate(160%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 body.mode-web #app, body.mode-android #app {
@@ -1166,8 +1166,65 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
   justify-content: center;
   z-index: 100;
   padding: 14px;
+  transition: background 0.2s ease;
 }
 .modal-backdrop.hidden { display: none; }
+
+#modal-settings.live-preview-mode {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 18px 20px;
+}
+#modal-settings.live-preview-mode .modal {
+  max-width: 440px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.22), 0 0 0 1px var(--border-strong);
+  transition: opacity 0.16s ease;
+}
+#modal-settings.live-preview-mode.adjusting-alpha .modal {
+  opacity: 0.78;
+}
+
+.skin-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.skin-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 2px solid var(--border-strong);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+  position: relative;
+}
+.skin-swatch:hover { transform: scale(1.12); }
+.skin-swatch.active {
+  border-color: var(--apple-blue);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.35);
+  transform: scale(1.08);
+}
+.skin-swatch-reset {
+  width: auto;
+  padding: 0 10px;
+  font-size: 11.5px;
+  color: var(--text-main);
+  background: var(--glass-pill);
+}
+.skin-color-picker {
+  width: 28px;
+  height: 26px;
+  padding: 1px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  cursor: pointer;
+}
 
 .modal {
   width: 100%;
