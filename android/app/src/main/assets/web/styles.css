@@ -242,6 +242,11 @@ body.mode-web #app, body.mode-android #app {
   color: var(--text-main);
 }
 
+.icon-btn-close:hover {
+  background: rgba(255, 59, 48, 0.16);
+  color: var(--apple-red);
+}
+
 .icon-btn:active {
   transform: scale(0.94);
 }

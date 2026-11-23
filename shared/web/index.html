@@ -61,6 +61,11 @@
         <button class="icon-btn" id="btn-main-menu" title="菜单与设置">
           <svg viewBox="0 0 24 24"><line x1="4" y1="6.5" x2="20" y2="6.5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17.5" x2="20" y2="17.5"/></svg>
         </button>
+
+        <!-- ✕ 关闭界面按钮（仅隐藏到右下角托盘继续运行，不退出软件） -->
+        <button class="icon-btn icon-btn-close" id="btn-close-window" title="关闭界面（仅隐藏到右下角托盘继续运行，右键托盘才算彻底退出）">
+          <svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
       </div>
     </header>
 
@@ -378,6 +383,11 @@
               <label>玻璃透明程度（0% 全透明 ~ 98% 实色）</label>
               <input type="range" id="rng-bg-alpha" min="0" max="98" value="72" style="width:100%;" />
             </div>
+            <div style="height:1px;background:var(--border-soft);margin:2px 0;"></div>
+            <label class="layer-ctrl"><input type="checkbox" id="opt-autolaunch" /><span>🚀 Windows 开机自动启动（开机后自动后台贴桌面运行）</span></label>
+            <div style="font-size:11.5px;color:var(--text-sub);line-height:1.5;">
+              💡 点击右上角 <strong>✕</strong> 关闭界面仅会隐藏到右下角系统托盘保持后台运行；<strong>只有在右下角托盘图标右键点击「彻底退出桌面日历」才会完全退出</strong>。
+            </div>
           </div>
           <div class="hint-box">
             Windows 端可自由拖动四边调整长宽高（最小限制 680×520 防内容拥挤），点击右上角 <strong>🔒</strong> 即可固定位置与尺寸并锁定课表防误触。
@@ -387,7 +397,6 @@
             <button class="btn" id="btn-open-tt-from-set">📋 课表与单双周管理</button>
           </div>
           <div class="desktop-only" style="flex-direction:column;gap:10px;width:100%;">
-            <label class="layer-ctrl"><input type="checkbox" id="opt-autolaunch" /> Windows 开机自动启动</label>
             <label class="layer-ctrl"><input type="checkbox" id="opt-desktop-pin" checked /> 贴桌面模式（不在任务栏占位，右下角托盘常驻）</label>
             <div id="lan-url-box" class="hint-box"></div>
             <div style="display:flex;justify-content:flex-end;">
@@ -399,7 +408,7 @@
         <!-- 设置子页 4：关于与在线检查更新 -->
         <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
           <div class="hint-box">
-            当前版本：<strong id="upd-cur-ver">v1.4.2</strong><br/>
+            当前版本：<strong id="upd-cur-ver">v1.4.3</strong><br/>
             在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
           </div>
           <div class="field">
@@ -655,7 +664,7 @@
     <div class="dropdown-divider"></div>
     <button class="dropdown-item" data-main-act="quit">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></span>
-      <span class="dropdown-item-text">退出软件</span>
+      <span class="dropdown-item-text">关闭界面（隐藏到托盘）</span>
     </button>
   </div>
 

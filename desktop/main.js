@@ -274,14 +274,17 @@ function updateTrayMenu() {
         const cur = loadState();
         cur.config.ui.autoLaunch = item.checked;
         saveState(cur);
-        app.setLoginItemSettings({ openAtLogin: item.checked });
+        app.setLoginItemSettings({ openAtLogin: item.checked, path: process.execPath });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('state:external-update', cur);
+        }
       },
     },
     { type: 'separator' },
     { label: lanLabel, enabled: false },
     { label: '快捷键 Ctrl+Alt+L 随时锁定/解锁', enabled: false },
     { type: 'separator' },
-    { label: '退出桌面日历', click: () => { app.isQuitting = true; app.quit(); } },
+    { label: '⏻ 彻底退出桌面日历', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
 }
@@ -466,7 +469,7 @@ function registerIpc() {
     }
     if (typeof opts.autoLaunch === 'boolean') {
       cur.config.ui.autoLaunch = opts.autoLaunch;
-      app.setLoginItemSettings({ openAtLogin: opts.autoLaunch });
+      app.setLoginItemSettings({ openAtLogin: opts.autoLaunch, path: process.execPath });
     }
     saveState(cur);
     updateTrayMenu();
@@ -476,12 +479,11 @@ function registerIpc() {
   ipcMain.handle('win:action', (_, action) => {
     if (!mainWindow) return;
     if (action === 'minimize') mainWindow.minimize();
-    if (action === 'hide') mainWindow.hide();
+    if (action === 'hide' || action === 'close' || action === 'quit') mainWindow.hide();
     if (action === 'toggle-max') {
       if (mainWindow.isMaximized()) mainWindow.unmaximize();
       else mainWindow.maximize();
     }
-    if (action === 'quit') { app.isQuitting = true; app.quit(); }
   });
 
   ipcMain.handle('lan:info', () => (lanServer ? lanServer.getInfo() : { running: false, urls: [] }));
@@ -490,7 +492,13 @@ function registerIpc() {
 app.whenReady().then(() => {
   const icon = buildTrayIcon();
   tray = new Tray(icon);
-  tray.setToolTip(`教师双图层桌面日历 v${PKG.version}（坚果云同步）`);
+  tray.setToolTip(`教师双图层桌面日历 v${PKG.version}（右键托盘退出）`);
+  tray.on('click', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
   tray.on('double-click', () => {
     if (mainWindow) {
       if (isLocked) setDesktopLock(false);

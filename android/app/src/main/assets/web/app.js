@@ -421,6 +421,8 @@
     document.getElementById('rng-bg-alpha').value = bgAlpha;
     const bgAlphaSet = document.getElementById('rng-bg-alpha-set');
     if (bgAlphaSet) bgAlphaSet.value = bgAlpha;
+    const autoEl = document.getElementById('opt-autolaunch');
+    if (autoEl) autoEl.checked = !!ui.autoLaunch;
     document.querySelectorAll('[data-bg-style]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.bgStyle === bgStyle);
     });
@@ -1732,6 +1734,28 @@
     document.getElementById('btn-phone-quick').addEventListener('click', () => openSettingsModal('desktop'));
     document.getElementById('btn-cloud-icon').addEventListener('click', () => openSettingsModal('sync'));
     document.getElementById('btn-account-icon').addEventListener('click', () => openSettingsModal('sync'));
+    const closeWinBtn = document.getElementById('btn-close-window');
+    if (closeWinBtn) {
+      closeWinBtn.addEventListener('click', async () => {
+        if (window.SyncBridge.mode === 'desktop') {
+          await window.SyncBridge.windowAction('hide');
+        } else {
+          showToast('界面已收纳（桌面端关闭仅隐藏到右下角托盘，右键托盘才算彻底退出）');
+        }
+      });
+    }
+    const autoLaunchEl = document.getElementById('opt-autolaunch');
+    if (autoLaunchEl) {
+      autoLaunchEl.addEventListener('change', async (e) => {
+        const autoLaunch = !!e.target.checked;
+        appState.config.ui.autoLaunch = autoLaunch;
+        if (window.SyncBridge.mode === 'desktop') {
+          await window.SyncBridge.setDesktopOptions({ autoLaunch });
+        }
+        await window.SyncBridge.saveState(appState);
+        showToast(autoLaunch ? '🚀 已开启 Windows 开机自动启动' : '已关闭开机自动启动');
+      });
+    }
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.dropdown-menu') && !e.target.closest('#btn-plugin-menu') && !e.target.closest('#btn-main-menu')) {
         closeAllMenus();
@@ -1811,7 +1835,11 @@
         } else if (act === 'about-update') {
           openSettingsModal('update');
         } else if (act === 'quit') {
-          await window.SyncBridge.windowAction('quit');
+          if (window.SyncBridge.mode === 'desktop') {
+            await window.SyncBridge.windowAction('hide');
+          } else {
+            showToast('已隐藏到后台（右键托盘点击「彻底退出桌面日历」才会退出）');
+          }
         }
       });
     });
