@@ -370,7 +370,7 @@
 
     const className = appState.data.classTimetable?.className || '902班';
     document.getElementById('homeroom-label-text').textContent = `🏫 班主任班级课表（${className}）`;
-    document.getElementById('homeroom-banner-text').textContent = `🏫 班主任专属视图：${className} 全周课程（已隐藏个人课表与干活）`;
+    document.getElementById('homeroom-banner-text').textContent = `🏫 班主任专属视图：${className} 全周课程（已隐藏个人课表与待办）`;
 
     document.getElementById('chk-homeroom').checked = homeroomOn;
     document.getElementById('pill-homeroom').classList.toggle('active-homeroom', homeroomOn);
@@ -380,12 +380,23 @@
     document.getElementById('pill-course').classList.toggle('dimmed', homeroomOn);
     document.getElementById('pill-work').classList.toggle('dimmed', homeroomOn);
 
+    const bgAlpha = typeof ui.bgAlpha === 'number' ? Math.max(0, Math.min(98, ui.bgAlpha)) : 72;
+    const bgStyle = bgAlpha <= 15 ? 'transparent' : bgAlpha <= 52 ? 'translucent' : bgAlpha <= 85 ? 'frosted' : 'solid';
+    const bgStyleLabels = { transparent: '全透明', translucent: '半透明', frosted: '磨砂玻璃', solid: '实色' };
+    document.documentElement.setAttribute('data-bg-style', bgStyle);
+    document.documentElement.style.setProperty('--bg-alpha', String(bgAlpha / 100));
+
     document.getElementById('chk-magnet').checked = ui.magnetSnap !== false;
     document.getElementById('rng-course-opacity').value = ui.courseOpacity ?? 78;
     document.getElementById('rng-work-opacity').value = ui.workOpacity ?? 92;
-    document.getElementById('rng-bg-alpha').value = ui.bgAlpha ?? 72;
+    document.getElementById('rng-bg-alpha').value = bgAlpha;
     const bgAlphaSet = document.getElementById('rng-bg-alpha-set');
-    if (bgAlphaSet) bgAlphaSet.value = ui.bgAlpha ?? 72;
+    if (bgAlphaSet) bgAlphaSet.value = bgAlpha;
+    document.querySelectorAll('[data-bg-style]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.bgStyle === bgStyle);
+    });
+    const readout = document.getElementById('bg-alpha-readout');
+    if (readout) readout.textContent = `${bgAlpha}% · ${bgStyleLabels[bgStyle]}`;
 
     const btnEvening = document.getElementById('btn-toggle-evening');
     const btnWeekend = document.getElementById('btn-toggle-weekend');
@@ -393,8 +404,6 @@
     btnEvening.textContent = ui.showEvening ? '🌃 晚自习：开' : '🌃 展示晚自习';
     btnWeekend.classList.toggle('active', !!ui.showWeekend);
     btnWeekend.textContent = ui.showWeekend ? '📅 周末：开' : '📅 展示周末';
-
-    document.documentElement.style.setProperty('--bg-alpha', String((ui.bgAlpha ?? 72) / 100));
 
     document.querySelectorAll('[data-view]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === currentView);
@@ -414,8 +423,8 @@
     }
     if (lockSvg) {
       lockSvg.innerHTML = isUiLocked
-        ? '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>'
-        : '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>';
+        ? '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'
+        : '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>';
     }
   }
 
@@ -1150,7 +1159,7 @@
   function switchSettingsTab(tab) {
     activeSettingsTab = tab || 'sync';
     document.querySelectorAll('[data-set-tab]').forEach(b => b.classList.toggle('active', b.dataset.setTab === activeSettingsTab));
-    ['sync', 'update', 'desktop'].forEach(t => {
+    ['sync', 'theme', 'desktop', 'update'].forEach(t => {
       const el = document.getElementById(`set-panel-${t}`);
       if (el) el.style.display = t === activeSettingsTab ? 'flex' : 'none';
     });
@@ -1698,6 +1707,13 @@
       }
     });
 
+    // 图层栏右侧 AI 工作平台独立入口
+    document.getElementById('btn-ai-bar').addEventListener('click', () => {
+      document.getElementById('ai-parse-preview').classList.add('hidden');
+      openModal('modal-ai-platform');
+      setTimeout(() => document.getElementById('ai-nl-input')?.focus(), 40);
+    });
+
     // 图 4：插件下拉菜单动作绑定
     document.querySelectorAll('[data-plugin-act]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -1719,9 +1735,6 @@
           activeTtTab = appState.config.ui.homeroomMode ? 'class' : 'my';
           renderTimetableManager();
           openModal('modal-timetable');
-        } else if (act === 'ai-platform') {
-          document.getElementById('ai-parse-preview').classList.add('hidden');
-          openModal('modal-ai-platform');
         } else if (act === 'weekly-report') {
           document.getElementById('wr-content').value = generateWeeklyReportText();
           openModal('modal-weekly-report');
@@ -1786,6 +1799,18 @@
       });
     }
 
+    // 主题皮肤：透明 / 半透明预设快捷切换
+    const bgStyleAlphaMap = { transparent: 6, translucent: 38, frosted: 72, solid: 96 };
+    document.querySelectorAll('[data-bg-style]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const presetAlpha = bgStyleAlphaMap[btn.dataset.bgStyle];
+        if (typeof presetAlpha !== 'number') return;
+        appState.config.ui.bgAlpha = presetAlpha;
+        render();
+        await persistAndScheduleSync(false);
+      });
+    });
+
     // 互斥「班主任班级课表」勾选逻辑 + 横幅内三合一智能导入按钮
     document.getElementById('chk-homeroom').addEventListener('change', (e) => setHomeroomMode(e.target.checked));
     document.getElementById('btn-exit-homeroom').addEventListener('click', () => setHomeroomMode(false));
@@ -1832,7 +1857,8 @@
       if (setSlider) setSlider.value = appState.config.ui.bgAlpha;
       render(); await persistAndScheduleSync(false);
     };
-    ['chk-magnet', 'rng-course-opacity', 'rng-work-opacity', 'rng-bg-alpha'].forEach(id => {
+    document.getElementById('chk-magnet').addEventListener('change', saveSimpleUi);
+    ['rng-course-opacity', 'rng-work-opacity', 'rng-bg-alpha'].forEach(id => {
       document.getElementById(id).addEventListener('input', saveSimpleUi);
     });
     const bgAlphaSetEl = document.getElementById('rng-bg-alpha-set');
@@ -1887,7 +1913,7 @@
       pv.classList.remove('hidden');
       document.getElementById('ai-nl-input').value = '';
       render(); await persistAndScheduleSync();
-      showToast('已解析并添加到顶层干活图层');
+      showToast('已解析并加入待办');
     });
     document.getElementById('btn-ai-to-report').addEventListener('click', () => {
       closeModal('modal-ai-platform');
@@ -1995,7 +2021,6 @@
       showToast(nextLocked ? '🔒 已锁定固定位置与尺寸（防误触已开启）' : '🔓 已解锁，可自由调整窗口并编辑课表');
     };
     document.getElementById('btn-lock').addEventListener('click', toggleLock);
-    document.getElementById('btn-unlock-banner').addEventListener('click', toggleLock);
 
     // 窗口任意拉长/拉宽时自动重新匹配方框与字体比例
     let resizeRaf = null;

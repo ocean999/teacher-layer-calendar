@@ -10,11 +10,6 @@
 </head>
 <body>
   <div id="app">
-    <div class="lock-banner">
-      <span>🔒 桌面已锁定固定（课表、干活与新增编辑已禁用防误触，核心切换与设置仍可用）</span>
-      <button class="btn btn-primary" id="btn-unlock-banner" style="padding:1px 9px;font-size:11px;">🔓 解锁</button>
-    </div>
-
     <!-- 顶部极简 Apple Liquid Glass 标题栏（图 2 风格：无多余文字，纯日期 + 线性图标） -->
     <header class="topbar">
       <div class="topbar-left">
@@ -51,7 +46,7 @@
 
         <!-- 🔒 锁定固定防误触 -->
         <button class="icon-btn" id="btn-lock" title="锁定固定防误触（锁定后窗口不可拖动缩放，课表与编辑按钮禁用）">
-          <svg id="lock-svg" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <svg id="lock-svg" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/></svg>
         </button>
 
         <!-- ← 上一周期 / → 下一周期 -->
@@ -69,48 +64,37 @@
       </div>
     </header>
 
-    <!-- 第二栏：图层开关 + 互斥「班主任班级课表」 + 节次磁吸 -->
+    <!-- 第二栏：图层开关 + 互斥「班主任班级课表」 + AI工作平台 -->
     <div class="layer-bar">
       <div class="layer-group">
         <label class="layer-pill" id="pill-course" title="我的授课课表（底层）">
           <input type="checkbox" id="chk-show-course" checked />
           <span class="legend-dot legend-course"></span>
-          <span>底层课表</span>
+          <span>课表</span>
           <input type="range" id="rng-course-opacity" min="15" max="100" value="78" />
         </label>
 
-        <label class="layer-pill" id="pill-work" title="每日临时干活事项（顶层）">
+        <label class="layer-pill" id="pill-work" title="每日临时待办事项（顶层）">
           <input type="checkbox" id="chk-show-work" checked />
           <span class="legend-dot legend-work"></span>
-          <span>顶层干活</span>
+          <span>待办</span>
           <input type="range" id="rng-work-opacity" min="20" max="100" value="92" />
         </label>
 
-        <label class="layer-pill" id="pill-homeroom" title="勾选后自动隐藏个人底层课表与顶层干活，纯净呈现本班全周所有课程">
+        <label class="layer-pill" id="pill-homeroom" title="勾选后自动隐藏课表与待办，纯净呈现本班全周所有课程">
           <input type="checkbox" id="chk-homeroom" />
           <span id="homeroom-label-text">🏫 班主任班级课表</span>
         </label>
       </div>
 
       <div class="layer-group">
-        <label class="layer-ctrl" title="拖动课程时自动略过课间/午休，像磁铁一样吸附到有效节次（按住 Alt 可临时自由拖动）">
-          <input type="checkbox" id="chk-magnet" checked />
-          <span>🧲 节次磁吸</span>
-        </label>
-
-        <button class="toggle-chip" id="btn-toggle-evening" title="开启或隐藏晚自习时间段">🌃 展示晚自习</button>
-        <button class="toggle-chip" id="btn-toggle-weekend" title="开启或隐藏周六周日">📅 展示周末</button>
-
-        <label class="layer-ctrl desktop-only" title="调节 Windows 桌面背景透明程度">
-          <span>玻璃透明</span>
-          <input type="range" id="rng-bg-alpha" min="22" max="96" value="72" />
-        </label>
+        <button class="ai-pill-btn lock-disabled" id="btn-ai-bar" title="AI工作平台 · 一句话自然语言智能排程并写入待办">✨ AI工作平台</button>
       </div>
     </div>
 
     <!-- 班主任专属模式横幅（内置三合一智能导入按钮：Excel / Word / 拍照识别） -->
     <div class="homeroom-banner" id="homeroom-banner">
-      <span id="homeroom-banner-text">🏫 班主任专属视图：正在显示 902班 全周所有课程（已自动隐藏个人底层课表与顶层干活）</span>
+      <span id="homeroom-banner-text">🏫 班主任专属视图：正在显示 902班 全周所有课程（已自动隐藏个人课表与待办）</span>
       <div style="display:flex;align-items:center;gap:6px;">
         <button class="btn btn-primary lock-disabled" id="btn-homeroom-smart-import" style="padding:3px 12px;">✨ 导入班级课表（Excel / Word / 拍照）</button>
         <button class="btn" id="btn-exit-homeroom" style="padding:3px 10px;">返回个人双图层</button>
@@ -176,7 +160,7 @@
   <div class="modal-backdrop hidden" id="modal-work">
     <div class="modal">
       <div class="modal-header">
-        <span id="wk-modal-title">📌 添加顶层干活事项</span>
+        <span id="wk-modal-title">📌 添加待办事项</span>
         <button class="btn btn-icon" data-close="modal-work">✕</button>
       </div>
       <div class="modal-body">
@@ -337,9 +321,9 @@
           </div>
         </div>
 
-        <!-- 设置子页 2：主题皮肤（三档外观 + 透明度） -->
+        <!-- 设置子页 2：主题皮肤（三档外观 + 透明/半透背景预设） -->
         <div id="set-panel-theme" style="display:none;flex-direction:column;gap:12px;">
-          <div class="hint-box">选择你喜欢的 Apple Liquid Glass 透明外观模式（支持自动跟随系统深浅色切换）：</div>
+          <div class="hint-box">选择 Apple 外观模式与背景透明效果：支持「🧊 全透明（直透电脑壁纸）」「💧 半透明」「🫧 磨砂玻璃」与「🎴 实色」一键切换或滑块精细微调。</div>
           <div class="field">
             <label>外观模式（三档）</label>
             <div class="seg-group" id="theme-seg" style="align-self:flex-start;">
@@ -349,13 +333,36 @@
             </div>
           </div>
           <div class="field">
-            <label>桌面背景液态玻璃透明度</label>
-            <input type="range" id="rng-bg-alpha-set" min="22" max="96" value="72" style="width:100%;" />
+            <label>背景风格（透明 / 半透明预设）</label>
+            <div class="seg-group" id="bg-style-seg" style="align-self:flex-start;">
+              <button class="seg-btn" data-bg-style="transparent">🧊 全透明</button>
+              <button class="seg-btn" data-bg-style="translucent">💧 半透明</button>
+              <button class="seg-btn active" data-bg-style="frosted">🫧 磨砂玻璃</button>
+              <button class="seg-btn" data-bg-style="solid">🎴 实色</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>背景不透明度精细调节 <span id="bg-alpha-readout" style="color:var(--apple-blue);font-weight:600;margin-left:6px;">72% · 磨砂玻璃</span></label>
+            <input type="range" id="rng-bg-alpha-set" min="0" max="98" value="72" style="width:100%;" />
           </div>
         </div>
 
         <!-- 设置子页 3：日历与桌面设置 -->
         <div id="set-panel-desktop" style="display:none;flex-direction:column;gap:11px;">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border-soft);background:var(--glass-pill);">
+            <label class="layer-ctrl" title="拖动课程时自动略过课间/午休，像磁铁一样吸附到有效节次（按住 Alt 可临时自由拖动）">
+              <input type="checkbox" id="chk-magnet" checked />
+              <span>🧲 节次磁吸（拖动调课自动略过课间）</span>
+            </label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+              <button class="toggle-chip" id="btn-toggle-evening" title="开启或隐藏晚自习时间段">🌃 展示晚自习</button>
+              <button class="toggle-chip" id="btn-toggle-weekend" title="开启或隐藏周六周日">📅 展示周末</button>
+            </div>
+            <div class="field">
+              <label>玻璃透明程度（0% 全透明 ~ 98% 实色）</label>
+              <input type="range" id="rng-bg-alpha" min="0" max="98" value="72" style="width:100%;" />
+            </div>
+          </div>
           <div class="hint-box">
             Windows 端可自由拖动四边调整长宽高（最小限制 680×520 防内容拥挤），点击右上角 <strong>🔒</strong> 即可固定位置与尺寸并锁定课表防误触。
           </div>
@@ -376,7 +383,7 @@
         <!-- 设置子页 4：关于与在线检查更新 -->
         <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
           <div class="hint-box">
-            当前版本：<strong id="upd-cur-ver">v1.4.0</strong><br/>
+            当前版本：<strong id="upd-cur-ver">v1.4.1</strong><br/>
             在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
           </div>
           <div class="field">
@@ -565,11 +572,6 @@
       <span class="dropdown-item-text">课程表管理</span>
     </button>
     <div class="dropdown-divider"></div>
-    <button class="dropdown-item" data-plugin-act="ai-platform">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 3l2.2 4.8L19 10l-4.8 2.2L12 17l-2.2-4.8L5 10l4.8-2.2Z"/></svg></span>
-      <span class="dropdown-item-text">AI工作平台</span>
-    </button>
-    <div class="dropdown-divider"></div>
     <button class="dropdown-item" data-plugin-act="weekly-report">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8"/><path d="M8 14h5"/></svg></span>
       <span class="dropdown-item-text">自动生成周报</span>
@@ -712,7 +714,7 @@
         <button class="btn" id="btn-ai-to-report">📊 去生成本周工作周报</button>
         <div style="display:flex;gap:6px;">
           <button class="btn" data-close="modal-ai-platform">关闭</button>
-          <button class="btn btn-primary lock-disabled" id="btn-ai-parse-add">⚡ 解析并添加</button>
+          <button class="btn btn-primary lock-disabled" id="btn-ai-parse-add">⚡ 解析并加入待办</button>
         </div>
       </div>
     </div>
