@@ -126,42 +126,239 @@ body.mode-web #app, body.mode-android #app {
   border: none;
 }
 
-/* 顶部液态玻璃导航栏 */
+/* 顶部液态玻璃极简导航栏（图 2 风格） */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 14px;
+  height: 40px;
+  padding: 0 12px;
   background: var(--glass-header);
   border-bottom: 1px solid var(--border-soft);
   box-shadow: var(--glass-rim);
   -webkit-app-region: drag;
   flex-shrink: 0;
+  position: relative;
+  z-index: 60;
 }
 
-.topbar-left, .topbar-center, .topbar-right {
+.topbar-left {
   display: flex;
   align-items: center;
-  gap: 6px;
-  -webkit-app-region: no-drag;
-}
-
-.app-title {
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: -0.2px;
-  color: var(--text-main);
-  margin-right: 4px;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
   -webkit-app-region: drag;
 }
 
-.date-range-label {
+.topbar-date-title {
+  font-size: 13.5px;
   font-weight: 600;
-  font-size: 13px;
+  letter-spacing: 0.2px;
   color: var(--text-main);
-  min-width: 128px;
-  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 999px;
+  transition: background 0.16s ease;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-date-title:hover {
+  background: var(--glass-pill);
+}
+
+.topbar-week-chip {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--apple-blue);
+  background: rgba(0, 122, 255, 0.12);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.compact-seg {
+  display: inline-flex;
+  background: var(--glass-pill);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 1px;
+  margin-right: 4px;
+}
+
+.compact-seg .seg-btn {
+  padding: 2px 8px;
+  font-size: 11.5px;
+}
+
+.icon-btn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-sub);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.icon-btn:hover {
+  background: var(--glass-pill-hover);
+  color: var(--text-main);
+}
+
+.icon-btn:active {
+  transform: scale(0.94);
+}
+
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-btn.cloud-ok { color: var(--apple-green); }
+.icon-btn.cloud-syncing { color: var(--apple-blue); }
+.icon-btn.cloud-syncing svg { animation: spinSlow 1.4s linear infinite; }
+.icon-btn.cloud-err { color: var(--apple-red); }
+.icon-btn.has-update-dot::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--apple-red);
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.menu-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 图 3 / 图 4 悬浮圆角下拉菜单 */
+.dropdown-menu {
+  position: fixed;
+  min-width: 196px;
+  max-height: calc(100vh - 54px);
+  overflow-y: auto;
+  padding: 6px 0;
+  border-radius: 12px;
+  background: var(--glass-modal);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.24), var(--glass-rim);
+  z-index: 260;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-menu.hidden {
+  display: none;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.dropdown-item:hover {
+  background: rgba(0, 122, 255, 0.12);
+}
+
+.dropdown-item-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-sub);
+}
+
+.dropdown-item-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dropdown-item-text {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.dropdown-item-trailing {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 4px 10px;
+}
+
+/* 隐私遮罩：点击图3“隐藏日历内容 🔒”开启 */
+body.privacy-masked .course-block,
+body.privacy-masked .course-ghost,
+body.privacy-masked .work-block,
+body.privacy-masked .month-entry-list {
+  filter: blur(6px);
+  transition: filter 0.2s ease;
+}
+
+body.privacy-masked .course-block:hover,
+body.privacy-masked .work-block:hover {
+  filter: blur(0px);
 }
 
 /* 苹果液态玻璃胶囊按钮 */
@@ -366,9 +563,9 @@ body.homeroom-active .homeroom-banner { display: flex; }
 }
 body.ui-locked .lock-banner { display: flex; }
 
-/* ===== 锁定固定防误触模式（窗口固定、课表/干活/新增/导入全部禁用，仅保留核心切换/设置/解锁按钮） ===== */
+/* ===== 锁定固定防误触模式（窗口固定、课表/干活/新增/导入全部禁用，仅保留核心切换/菜单/解锁按钮） ===== */
 body.ui-locked .topbar,
-body.ui-locked .app-title {
+body.ui-locked .topbar-left {
   -webkit-app-region: no-drag !important;
 }
 body.ui-locked .course-block,
@@ -389,14 +586,16 @@ body.ui-locked .lock-disabled {
 }
 .btn-lock-active {
   background: var(--apple-blue) !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
   color: #fff !important;
   font-weight: 700 !important;
 }
 
 /* ===== 自适应缩放：窄屏 / 矮屏自动收缩内边距与字号，确保文字方框始终完整匹配 ===== */
-body.compact-narrow .topbar { padding: 6px 10px; gap: 5px; }
-body.compact-narrow .app-title { display: none; }
+body.compact-narrow .topbar { padding: 0 8px; gap: 4px; }
+body.compact-narrow .topbar-week-chip { display: none; }
+body.compact-narrow .topbar-date-title { font-size: 12px; padding: 2px 5px; }
+body.compact-narrow .icon-btn { width: 26px; height: 26px; }
+body.compact-narrow .compact-seg .seg-btn { padding: 2px 6px; font-size: 11px; }
 body.compact-narrow .btn { padding: 4px 8px; font-size: 11.5px; }
 body.compact-narrow .seg-btn { padding: 3px 8px; font-size: 11.5px; }
 body.compact-narrow .layer-bar { padding: 5px 10px; gap: 6px; }
@@ -413,6 +612,41 @@ body.compact-short .course-title,
 body.compact-short .work-header { font-size: 11px; line-height: 1.15; }
 body.compact-short .course-time,
 body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
+
+/* 便签管理、搜索、周报弹窗辅助样式 */
+.mgr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.mgr-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  background: var(--glass-pill);
+  font-size: 12.5px;
+}
+.mgr-row:hover {
+  border-color: var(--border-strong);
+  background: var(--glass-pill-hover);
+}
+@media print {
+  .topbar, .layer-bar, .lock-banner, .homeroom-banner, .modal-backdrop, .dropdown-menu, .toast {
+    display: none !important;
+  }
+  #app {
+    border: none !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
 
 /* 主视图 */
 .main-viewport {

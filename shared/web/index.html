@@ -15,39 +15,57 @@
       <button class="btn btn-primary" id="btn-unlock-banner" style="padding:1px 9px;font-size:11px;">🔓 解锁</button>
     </div>
 
-    <!-- 顶部 Apple Liquid Glass 导航栏 -->
+    <!-- 顶部极简 Apple Liquid Glass 标题栏（图 2 风格：无多余文字，纯日期 + 线性图标） -->
     <header class="topbar">
       <div class="topbar-left">
-        <span class="app-title">双图层日历</span>
-        <button class="btn btn-icon" id="btn-prev" title="上一周期">◀</button>
-        <button class="btn" id="btn-today">今天</button>
-        <button class="btn btn-icon" id="btn-next" title="下一周期">▶</button>
-        <span class="date-range-label" id="date-range-label">2026年11月</span>
-      </div>
-
-      <div class="topbar-center">
-        <div class="seg-group">
-          <button class="seg-btn active" data-view="week">周时间轴</button>
-          <button class="seg-btn" data-view="day">日时间轴</button>
-          <button class="seg-btn" data-view="month">月时间轴</button>
-        </div>
+        <span class="topbar-date-title" id="topbar-full-date" title="点击回到今天">2026年11月23日 星期一 农历十月十五</span>
+        <span class="topbar-week-chip" id="topbar-week-chip">第13周</span>
       </div>
 
       <div class="topbar-right">
-        <div class="seg-group" id="theme-seg" title="三档外观：白天 / 黑夜 / 自动识别系统深浅色">
-          <button class="seg-btn" data-theme-mode="light">☀️ 白天</button>
-          <button class="seg-btn" data-theme-mode="dark">🌙 黑夜</button>
-          <button class="seg-btn active" data-theme-mode="auto">🌗 自动</button>
+        <div class="seg-group compact-seg" title="切换时间轴视图">
+          <button class="seg-btn active" data-view="week">周</button>
+          <button class="seg-btn" data-view="day">日</button>
+          <button class="seg-btn" data-view="month">月</button>
         </div>
-        <button class="btn btn-amber lock-disabled" id="btn-add-work">+ 记干活</button>
-        <button class="btn lock-disabled" id="btn-timetable">📋 课表</button>
-        <button class="sync-badge" id="btn-sync-settings" title="坚果云 WebDAV 自动同步状态（点击打开设置）">
-          <span id="sync-status-text">☁ 同步</span>
+
+        <!-- 🧩 插件图标（图 4 下拉菜单） -->
+        <button class="icon-btn" id="btn-plugin-menu" title="插件与扩展工具">
+          <svg viewBox="0 0 24 24"><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/><circle cx="12" cy="12" r="2.5"/></svg>
         </button>
-        <button class="btn" id="btn-settings" title="设置（坚果云同步 / 在线检查更新 / 桌面选项）">⚙ 设置</button>
-        <button class="btn btn-icon" id="btn-lock" title="锁定固定防误触（锁定后窗口不可拖动缩放，课表与编辑按钮禁用）">🔒</button>
-        <button class="btn btn-icon desktop-only" id="btn-min" title="最小化到托盘">—</button>
-        <button class="btn btn-icon desktop-only" id="btn-max" title="最大化/还原">□</button>
+
+        <!-- 📱 手机连接图标 -->
+        <button class="icon-btn" id="btn-phone-quick" title="手机端同步与局域网连接">
+          <svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><line x1="10.5" y1="18" x2="13.5" y2="18"/></svg>
+        </button>
+
+        <!-- ☁ 坚果云同步纯图标 -->
+        <button class="icon-btn" id="btn-cloud-icon" title="坚果云 WebDAV 自动同步（点击打开账户设置）">
+          <svg viewBox="0 0 24 24"><path d="M17.5 19H7a4.5 4.5 0 0 1-.4-8.98A5.5 5.5 0 0 1 17.3 9.2 4 4 0 0 1 17.5 19Z"/><path d="M9.5 14l2 2 3.5-3.5"/></svg>
+        </button>
+
+        <!-- 👤 账户设置图标 -->
+        <button class="icon-btn" id="btn-account-icon" title="账户设置（坚果云 WebDAV）">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5a7 7 0 0 1 14 0"/></svg>
+        </button>
+
+        <!-- 🔒 锁定固定防误触 -->
+        <button class="icon-btn" id="btn-lock" title="锁定固定防误触（锁定后窗口不可拖动缩放，课表与编辑按钮禁用）">
+          <svg id="lock-svg" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </button>
+
+        <!-- ← 上一周期 / → 下一周期 -->
+        <button class="icon-btn" id="btn-prev" title="上一周期">
+          <svg viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-next" title="下一周期">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        </button>
+
+        <!-- ≡ 设置主菜单图标（图 3 下拉菜单） -->
+        <button class="icon-btn" id="btn-main-menu" title="菜单与设置">
+          <svg viewBox="0 0 24 24"><line x1="4" y1="6.5" x2="20" y2="6.5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17.5" x2="20" y2="17.5"/></svg>
+        </button>
       </div>
     </header>
 
@@ -286,14 +304,15 @@
       </div>
       <div class="modal-body">
         <div class="seg-group" style="align-self:flex-start;">
-          <button class="seg-btn active" data-set-tab="sync">☁ 坚果云自动同步</button>
-          <button class="seg-btn" data-set-tab="update">⬆ 在线检查更新</button>
-          <button class="seg-btn" data-set-tab="desktop">🖥 桌面与手机</button>
+          <button class="seg-btn active" data-set-tab="sync">☁ 账户与坚果云同步</button>
+          <button class="seg-btn" data-set-tab="theme">👕 主题皮肤</button>
+          <button class="seg-btn" data-set-tab="desktop">⚙ 日历与桌面</button>
+          <button class="seg-btn" data-set-tab="update">⬆ 关于与检查更新</button>
         </div>
 
-        <!-- 设置子页 1：坚果云 WebDAV 自动同步 -->
+        <!-- 设置子页 1：坚果云 WebDAV 自动同步（账户设置） -->
         <div id="set-panel-sync" style="display:flex;flex-direction:column;gap:11px;">
-          <div class="hint-box">
+          <div class="hint-box" id="sync-detail-banner">
             四文件免费自动双向同步至 <code>/TeacherCal/</code>（个人课表、单次调课、顶层干活、班主任班级课表）。<br/>
             在坚果云网页版 → 账户信息 → 安全选项 → 第三方应用管理 → 添加应用，复制<strong>应用密码（同步码）</strong>填在下方。
           </div>
@@ -318,28 +337,31 @@
           </div>
         </div>
 
-        <!-- 设置子页 2：在线检查更新 -->
-        <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
-          <div class="hint-box">
-            当前版本：<strong id="upd-cur-ver">v1.3.0</strong><br/>
-            在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
+        <!-- 设置子页 2：主题皮肤（三档外观 + 透明度） -->
+        <div id="set-panel-theme" style="display:none;flex-direction:column;gap:12px;">
+          <div class="hint-box">选择你喜欢的 Apple Liquid Glass 透明外观模式（支持自动跟随系统深浅色切换）：</div>
+          <div class="field">
+            <label>外观模式（三档）</label>
+            <div class="seg-group" id="theme-seg" style="align-self:flex-start;">
+              <button class="seg-btn" data-theme-mode="light">☀️ 白天</button>
+              <button class="seg-btn" data-theme-mode="dark">🌙 黑夜</button>
+              <button class="seg-btn active" data-theme-mode="auto">🌗 自动识别</button>
+            </div>
           </div>
           <div class="field">
-            <label>GitHub 更新仓库（如 <code>用户名/teacher-layer-calendar</code>）或自定义 <code>version.json</code> 地址</label>
-            <input type="text" class="input" id="upd-source" placeholder="例如：yourname/teacher-layer-calendar" />
-          </div>
-          <label class="layer-ctrl"><input type="checkbox" id="upd-auto-check" checked /> 启动软件时自动在线检查新版本</label>
-          <div id="upd-status-box" class="hint-box hidden"></div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;">
-            <button class="btn" id="btn-upd-check">🔍 立即在线检查更新</button>
-            <button class="btn btn-primary hidden" id="btn-upd-apply">🚀 一键下载并更新</button>
+            <label>桌面背景液态玻璃透明度</label>
+            <input type="range" id="rng-bg-alpha-set" min="22" max="96" value="72" style="width:100%;" />
           </div>
         </div>
 
-        <!-- 设置子页 3：桌面与手机连接 -->
+        <!-- 设置子页 3：日历与桌面设置 -->
         <div id="set-panel-desktop" style="display:none;flex-direction:column;gap:11px;">
           <div class="hint-box">
             Windows 端可自由拖动四边调整长宽高（最小限制 680×520 防内容拥挤），点击右上角 <strong>🔒</strong> 即可固定位置与尺寸并锁定课表防误触。
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn" id="btn-open-bell-from-set">⚡ 批量排作息时间</button>
+            <button class="btn" id="btn-open-tt-from-set">📋 课表与单双周管理</button>
           </div>
           <div class="desktop-only" style="flex-direction:column;gap:10px;width:100%;">
             <label class="layer-ctrl"><input type="checkbox" id="opt-autolaunch" /> Windows 开机自动启动</label>
@@ -348,6 +370,24 @@
             <div style="display:flex;justify-content:flex-end;">
               <button class="btn btn-primary" id="btn-desktop-opt-save">保存桌面选项</button>
             </div>
+          </div>
+        </div>
+
+        <!-- 设置子页 4：关于与在线检查更新 -->
+        <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
+          <div class="hint-box">
+            当前版本：<strong id="upd-cur-ver">v1.4.0</strong><br/>
+            在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
+          </div>
+          <div class="field">
+            <label>GitHub 更新仓库（如 <code>ocean999/teacher-layer-calendar</code>）或自定义 <code>version.json</code> 地址</label>
+            <input type="text" class="input" id="upd-source" placeholder="例如：ocean999/teacher-layer-calendar" />
+          </div>
+          <label class="layer-ctrl"><input type="checkbox" id="upd-auto-check" checked /> 启动软件时自动在线检查新版本</label>
+          <div id="upd-status-box" class="hint-box hidden"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn" id="btn-upd-check">🔍 立即在线检查更新</button>
+            <button class="btn btn-primary hidden" id="btn-upd-apply">🚀 一键下载并更新</button>
           </div>
         </div>
       </div>
@@ -492,6 +532,230 @@
           <button class="btn" data-close="modal-bell-batch">取消</button>
           <button class="btn btn-primary" id="btn-bb-apply">⚡ 一键应用全天作息</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图 4：🧩 插件悬浮菜单 -->
+  <div class="dropdown-menu hidden" id="menu-plugin">
+    <button class="dropdown-item" data-plugin-act="desktop-mgr">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5" style="stroke:var(--apple-blue)"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg></span>
+      <span class="dropdown-item-text">桌面管理</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item lock-disabled" data-plugin-act="new-memo">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg></span>
+      <span class="dropdown-item-text">新建便签</span>
+    </button>
+    <button class="dropdown-item" data-plugin-act="memo-settings">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">便签设置</span>
+    </button>
+    <button class="dropdown-item" data-plugin-act="memo-mgr">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">便签管理</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item lock-disabled" data-plugin-act="new-schedule">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg></span>
+      <span class="dropdown-item-text">新建课程表</span>
+    </button>
+    <button class="dropdown-item lock-disabled" data-plugin-act="schedule-mgr">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">课程表管理</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item" data-plugin-act="ai-platform">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 3l2.2 4.8L19 10l-4.8 2.2L12 17l-2.2-4.8L5 10l4.8-2.2Z"/></svg></span>
+      <span class="dropdown-item-text">AI工作平台</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item" data-plugin-act="weekly-report">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8"/><path d="M8 14h5"/></svg></span>
+      <span class="dropdown-item-text">自动生成周报</span>
+    </button>
+  </div>
+
+  <!-- 图 3：≡ 主设置悬浮菜单 -->
+  <div class="dropdown-menu hidden" id="menu-main">
+    <button class="dropdown-item" data-main-act="search">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span>
+      <span class="dropdown-item-text">内容搜索</span>
+    </button>
+    <button class="dropdown-item" data-main-act="pick-date">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">选择日期</span>
+    </button>
+    <button class="dropdown-item" data-main-act="theme">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"/></svg></span>
+      <span class="dropdown-item-text">主题皮肤</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item" data-main-act="resize-unlock">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></span>
+      <span class="dropdown-item-text">调整位置和大小</span>
+    </button>
+    <button class="dropdown-item" data-main-act="hide-window">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">隐藏日历清单</span>
+    </button>
+    <button class="dropdown-item" data-main-act="privacy-mask">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">隐藏日历内容</span>
+      <span class="dropdown-item-trailing" id="menu-privacy-flag">🔓</span>
+    </button>
+    <button class="dropdown-item" data-main-act="export">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">导出</span>
+    </button>
+    <button class="dropdown-item lock-disabled" data-main-act="import">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">导入</span>
+    </button>
+    <button class="dropdown-item" data-main-act="print">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">打印</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item" data-main-act="cal-settings">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="15" cy="14" r="2.5" style="stroke:var(--apple-blue)"/></svg></span>
+      <span class="dropdown-item-text">日历设置</span>
+    </button>
+    <button class="dropdown-item" data-main-act="account-settings">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5 17a4 4 0 0 1 8 0"/><circle cx="17" cy="13" r="2" style="stroke:var(--apple-blue)"/></svg></span>
+      <span class="dropdown-item-text">账户设置</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item" data-main-act="features">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.5 1 1.3 1 2.3h6c0-1 .3-1.8 1-2.3A7 7 0 0 0 12 2Z"/></svg></span>
+      <span class="dropdown-item-text">功能介绍</span>
+    </button>
+    <button class="dropdown-item" data-main-act="about-update">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">关于与检查更新</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-item" data-main-act="quit">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></span>
+      <span class="dropdown-item-text">退出软件</span>
+    </button>
+  </div>
+
+  <!-- 弹窗 8：内容搜索 & 选择日期 -->
+  <div class="modal-backdrop hidden" id="modal-search">
+    <div class="modal">
+      <div class="modal-header">
+        <span>🔍 内容搜索与日期跳转</span>
+        <button class="btn btn-icon" data-close="modal-search">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-row">
+          <div class="field">
+            <label>搜索课程或干活便签关键字</label>
+            <input type="text" class="input" id="srch-input" placeholder="输入关键字，如：历史 / 902 / 作业" />
+          </div>
+          <div class="field">
+            <label>直接跳转到指定日期</label>
+            <div style="display:flex;gap:6px;">
+              <input type="date" class="input" id="srch-jump-date" />
+              <button class="btn btn-primary" id="btn-srch-jump">跳转</button>
+            </div>
+          </div>
+        </div>
+        <div class="mgr-list" id="srch-results"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 9：便签管理 -->
+  <div class="modal-backdrop hidden" id="modal-memo-mgr">
+    <div class="modal modal-lg" style="max-width:600px;">
+      <div class="modal-header">
+        <span>📝 便签与顶层干活管理</span>
+        <button class="btn btn-icon" data-close="modal-memo-mgr">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="seg-group">
+            <button class="seg-btn active" data-memo-filter="all">全部</button>
+            <button class="seg-btn" data-memo-filter="todo">未完成</button>
+            <button class="seg-btn" data-memo-filter="done">已完成</button>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-amber lock-disabled" id="btn-memo-mgr-new">+ 新建便签</button>
+            <button class="btn btn-danger lock-disabled" id="btn-memo-clear-done">清理已完成</button>
+          </div>
+        </div>
+        <div class="mgr-list" id="memo-mgr-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 10：AI 工作平台（智能自然语言解析排程） -->
+  <div class="modal-backdrop hidden" id="modal-ai-platform">
+    <div class="modal">
+      <div class="modal-header">
+        <span>✨ AI 工作平台 · 一句话智能排程</span>
+        <button class="btn btn-icon" data-close="modal-ai-platform">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="hint-box">
+          输入一句话日程（例如：<code>周三 15:20-16:30 开社政备课组会</code> 或 <code>明天 09:00-10:00 批改902作业本 重要</code>），自动识别日期、时间与标题，一键叠加入顶层干活图层！
+        </div>
+        <div class="field">
+          <label>自然语言输入</label>
+          <textarea class="textarea" id="ai-nl-input" rows="3" placeholder="例如：周四 14:00-15:00 与家长沟通月考情况"></textarea>
+        </div>
+        <div id="ai-parse-preview" class="hint-box hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-ai-to-report">📊 去生成本周工作周报</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn" data-close="modal-ai-platform">关闭</button>
+          <button class="btn btn-primary lock-disabled" id="btn-ai-parse-add">⚡ 解析并添加</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 11：自动生成周报 -->
+  <div class="modal-backdrop hidden" id="modal-weekly-report">
+    <div class="modal modal-lg" style="max-width:600px;">
+      <div class="modal-header">
+        <span>📊 自动生成本周工作周报</span>
+        <button class="btn btn-icon" data-close="modal-weekly-report">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="hint-box">已自动汇总当前周的授课节数、单次调课变动以及顶层已完成/待办干活事项，可直接复制发送或留存教学记录。</div>
+        <textarea class="textarea" id="wr-content" rows="13" style="line-height:1.6;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-wr-regen">🔄 重新汇总</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn" data-close="modal-weekly-report">关闭</button>
+          <button class="btn btn-primary" id="btn-wr-copy">📋 一键复制周报</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 12：功能介绍 -->
+  <div class="modal-backdrop hidden" id="modal-features">
+    <div class="modal">
+      <div class="modal-header">
+        <span>💡 功能介绍</span>
+        <button class="btn btn-icon" data-close="modal-features">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="hint-box">
+          <strong>1. 双图层精确时间轴叠加</strong>：底层铺固定课表（支持 🧲 跳过课间磁吸单次调课），顶层叠临时干活与便签，时间撞车自动透视标 ⚡。<br/>
+          <strong>2. 班主任专属视图</strong>：一键切换纯净全班课表，并内置 Excel / Word / 拍照 OCR 三合一识别导入与左侧时间轴自动校准。<br/>
+          <strong>3. 坚果云免费自动同步 + 在线检查更新</strong>：Windows 桌面版与安卓 App 实时四文件无损双向同步，零会员收费。
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span></span>
+        <button class="btn btn-primary" data-close="modal-features">知道了</button>
       </div>
     </div>
   </div>
