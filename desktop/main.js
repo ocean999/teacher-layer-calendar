@@ -88,6 +88,7 @@ function createDefaultState() {
         timeEndHour: 17.5,
         desktopPin: true,
         autoLaunch: false,
+        reminderEnabled: true,
         lanEnabled: true,
       },
       bounds: null,
@@ -129,6 +130,8 @@ function createDefaultState() {
         courses: buildDefaultClassCourses(now),
         overrides: [],
       },
+      inbox: [],
+      dayOverrides: {},
     },
     lastSyncedAt: null,
   };
@@ -306,6 +309,8 @@ async function runSync(overrideData = null) {
       overrides: merged.overrides,
       works: merged.works,
       classTimetable: merged.classTimetable,
+      inbox: st.data.inbox || [],
+      dayOverrides: st.data.dayOverrides || {},
     };
     st.lastSyncedAt = merged.syncedAt;
     saveState(st);

@@ -154,7 +154,8 @@
   // ===== 核心：计算某天生效的课表（支持 source='my' 个人底层课表 / source='class' 班主任班级课表） =====
   function getEffectiveCoursesForDate(dateStr, source = 'my') {
     const d = parseDate(dateStr);
-    const weekday = getIsoWeekday(d);
+    const dayOv = appState.data.dayOverrides && appState.data.dayOverrides[dateStr];
+    const weekday = (dayOv && dayOv.type === 'makeup' && dayOv.sourceWeekday) ? dayOv.sourceWeekday : getIsoWeekday(d);
     const weekNum = getWeekNumber(dateStr);
     const parityNow = weekNum % 2 === 0 ? 'even' : 'odd';
 
@@ -170,53 +171,56 @@
     const activeList = [];
     const ghostList = [];
 
-    courses.forEach(c => {
-      if (c.weekday !== weekday) return;
-      if (c.parity === 'odd' && parityNow !== 'odd') return;
-      if (c.parity === 'even' && parityNow !== 'even') return;
+    if (!dayOv || dayOv.type !== 'holiday') {
+      courses.forEach(c => {
+        if (c.weekday !== weekday) return;
+        if (c.parity === 'odd' && parityNow !== 'odd') return;
+        if (c.parity === 'even' && parityNow !== 'even') return;
 
-      const ov = overrides.find(o => o.courseId === c.id && o.origDate === dateStr);
-      if (!ov) {
-        activeList.push({
-          source,
-          courseId: c.id,
-          origDate: dateStr,
-          origStart: c.start,
-          origEnd: c.end,
-          date: dateStr,
-          start: c.start,
-          end: c.end,
-          title: c.title,
-          note: c.room || '',
-          color: c.color || guessColor(c.title),
-          isMoved: false,
-          overrideId: null,
-        });
-      } else if (ov.type === 'cancel') {
-        ghostList.push({
-          source,
-          overrideId: ov.id,
-          courseId: c.id,
-          origDate: dateStr,
-          origStart: c.start,
-          origEnd: c.end,
-          title: c.title,
-          label: `已停课 · 原 ${c.title}`,
-        });
-      } else if (ov.type === 'move') {
-        const shortTarget = ov.targetDate === dateStr ? ov.targetStart : `${ov.targetDate.slice(5)} ${ov.targetStart}`;
-        ghostList.push({
-          source,
-          overrideId: ov.id,
-          courseId: c.id,
-          origDate: dateStr,
-          origStart: c.start,
-          origEnd: c.end,
-          title: c.title,
-          label: `已调走 → ${shortTarget} (${c.title})`,
-        });
-      }
-    });
+        const ov = overrides.find(o => o.courseId === c.id && o.origDate === dateStr);
+        if (!ov) {
+          activeList.push({
+            source,
+            courseId: c.id,
+            origDate: dateStr,
+            origStart: c.start,
+            origEnd: c.end,
+            date: dateStr,
+            start: c.start,
+            end: c.end,
+            title: c.title,
+            note: c.room || '',
+            color: c.color || guessColor(c.title),
+            customBg: c.customBg || '',
+            isMoved: false,
+            overrideId: null,
+          });
+        } else if (ov.type === 'cancel') {
+          ghostList.push({
+            source,
+            overrideId: ov.id,
+            courseId: c.id,
+            origDate: dateStr,
+            origStart: c.start,
+            origEnd: c.end,
+            title: c.title,
+            label: `已停课 · 原 ${c.title}`,
+          });
+        } else if (ov.type === 'move') {
+          const shortTarget = ov.targetDate === dateStr ? ov.targetStart : `${ov.targetDate.slice(5)} ${ov.targetStart}`;
+          ghostList.push({
+            source,
+            overrideId: ov.id,
+            courseId: c.id,
+            origDate: dateStr,
+            origStart: c.start,
+            origEnd: c.end,
+            title: c.title,
+            label: `已调走 → ${shortTarget} (${c.title})`,
+          });
+        }
+      });
+    }
 
     overrides.forEach(ov => {
       if (ov.type !== 'move' || ov.targetDate !== dateStr) return;
@@ -234,6 +238,7 @@
         title,
         note: ov.note || '',
         color: (base && base.color) || guessColor(title),
+        customBg: (base && base.customBg) || '',
         isMoved: true,
         overrideId: ov.id,
       });
@@ -423,6 +428,8 @@
     if (bgAlphaSet) bgAlphaSet.value = bgAlpha;
     const autoEl = document.getElementById('opt-autolaunch');
     if (autoEl) autoEl.checked = !!ui.autoLaunch;
+    const remEl = document.getElementById('opt-reminder');
+    if (remEl) remEl.checked = ui.reminderEnabled !== false;
     document.querySelectorAll('[data-bg-style]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.bgStyle === bgStyle);
     });
@@ -476,6 +483,37 @@
     }
   }
 
+  function courseCustomStyle(hex) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return '';
+    const txt = rgb.lum < 0.54 ? '#f8fafc' : '#0f172a';
+    return `background-color:${hex};color:${txt};border-color:rgba(15,23,42,0.22);`;
+  }
+
+  function renderNextCountdown() {
+    const pill = document.getElementById('topbar-next-pill');
+    if (!pill || !appState) return;
+    const todayStr = fmtDate(new Date());
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const homeroomOn = !!appState.config.ui.homeroomMode;
+    const { activeList } = getEffectiveCoursesForDate(todayStr, homeroomOn ? 'class' : 'my');
+    const works = homeroomOn ? [] : (appState.data.works || []).filter(w => !w.deleted && !w.done && w.date === todayStr);
+    const items = [
+      ...activeList.map(c => ({ s: toMin(c.start), e: toMin(c.end), label: c.title })),
+      ...works.map(w => ({ s: toMin(w.start), e: toMin(w.end), label: w.title })),
+    ].sort((a, b) => a.s - b.s);
+    const cur = items.find(it => nowMin >= it.s && nowMin < it.e);
+    if (cur) {
+      pill.classList.add('ongoing');
+      pill.textContent = `🟢 进行中：${cur.label} · 剩${cur.e - nowMin}分`;
+      return;
+    }
+    const next = items.find(it => it.s > nowMin);
+    pill.classList.remove('ongoing');
+    pill.textContent = next ? `🔔 距 ${next.label} 还有${next.s - nowMin}分` : '✅ 今日后续无日程';
+  }
+
   function render() {
     if (!appState) return;
     applyUiControlsFromState();
@@ -483,10 +521,13 @@
     refreshSyncBadgeFromState();
     updateTopbarDateLabel();
     updateResponsiveLayout();
+    renderNextCountdown();
+    if (typeof renderInbox === 'function') renderInbox();
 
     const vp = document.getElementById('main-viewport');
     if (currentView === 'month') renderMonthView(vp);
     else renderTimelineView(vp);
+    if (typeof checkReminders === 'function') checkReminders();
   }
 
   // ===== 渲染周时间轴 / 日时间轴 =====
@@ -525,7 +566,9 @@
     const headerCells = `<div class="timeline-header-cell" id="time-axis-hdr" title="双击智能批量排作息时间" style="color:var(--text-muted);">时间 ⚡</div>` +
       dates.map(d => {
         const ds = fmtDate(d), isTd = ds === todayStr;
-        return `<div class="timeline-header-cell ${isTd ? 'today' : ''}" data-header-date="${ds}">${WEEKDAYS_CN[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}${isTd ? ' · 今天' : ''}</div>`;
+        const dayOv = appState.data.dayOverrides && appState.data.dayOverrides[ds];
+        const badge = dayOv ? (dayOv.type === 'holiday' ? `<span class="day-badge holiday">休</span>` : `<span class="day-badge makeup">${escapeHtml(dayOv.label || '补')}</span>`) : '';
+        return `<div class="timeline-header-cell ${isTd ? 'today' : ''}" data-header-date="${ds}" title="点击设置法定节假日或周末补课（双击切日/周视图）" style="cursor:pointer;">${WEEKDAYS_CN[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}${isTd ? ' · 今天' : ''}${badge}</div>`;
       }).join('');
 
     // 左侧时间刻度 + 节次轻标签 + 苹果日历红色胶囊当前时间
@@ -566,7 +609,10 @@
       if (bEnd > bStart && bEnd > range.start && bStart < range.end) {
         const s = Math.max(bStart, range.start), e = Math.min(bEnd, range.end);
         const h = (e - s) * PX_PER_MIN;
-        const label = (bEnd - bStart) >= 50 ? '午休 / 大休' : (h >= 13 ? '课间' : '');
+        let label = '';
+        if (bStart >= 11 * 60 && bStart <= 14 * 60 && (bEnd - bStart) >= 40) label = '午休';
+        else if (bStart >= 16 * 60 && (bEnd - bStart) >= 30) label = '晚读';
+        else if (h >= 13) label = '课间';
         linesHtml += `<div class="break-band" style="top:${(s - range.start) * PX_PER_MIN}px;height:${h}px">${label}</div>`;
       }
     }
@@ -580,7 +626,11 @@
     const dayColsHtml = dates.map(d => {
       const ds = fmtDate(d);
       const isTd = ds === todayStr;
+      const dayOv = appState.data.dayOverrides && appState.data.dayOverrides[ds];
       let colInner = linesHtml;
+      if (dayOv && dayOv.type === 'holiday') {
+        colInner += `<div class="holiday-watermark">🏖 ${escapeHtml(dayOv.label || '法定节假日')}<br/><span style="font-weight:500;font-size:10.5px;">已免课休整（点表头可改）</span></div>`;
+      }
 
       // 苹果日历式实时推进红线 + 已流逝时间柔光遮罩
       if (showNowLine) {
@@ -609,7 +659,7 @@
           const height = Math.max(24, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
           const isMine = /历史|道法|地理|班会|（张）|\(张\)/.test(c.title);
           colInner += `
-            <div class="course-block course-${c.color} ${isMine ? 'my-class-highlight' : ''}" style="top:${top}px;height:${height}px;opacity:0.94"
+            <div class="course-block course-${c.color} ${isMine ? 'my-class-highlight' : ''}" style="top:${top}px;height:${height}px;opacity:0.94;${courseCustomStyle(c.customBg)}"
                  data-course-source="class"
                  data-course-id="${c.courseId}" data-orig-date="${c.origDate}" data-orig-start="${c.origStart}" data-orig-end="${c.origEnd}"
                  data-cur-date="${c.date}" data-cur-start="${c.start}" data-cur-end="${c.end}"
@@ -643,12 +693,12 @@
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
           const height = Math.max(24, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
           colInner += `
-            <div class="course-block course-${c.color}" style="top:${top}px;height:${height}px;opacity:${opCourse}"
+            <div class="course-block course-${c.color}" style="top:${top}px;height:${height}px;opacity:${opCourse};${courseCustomStyle(c.customBg)}"
                  data-course-source="my"
                  data-course-id="${c.courseId}" data-orig-date="${c.origDate}" data-orig-start="${c.origStart}" data-orig-end="${c.origEnd}"
                  data-cur-date="${c.date}" data-cur-start="${c.start}" data-cur-end="${c.end}"
                  data-cur-title="${escapeAttr(c.title)}" data-cur-note="${escapeAttr(c.note)}" data-override-id="${c.overrideId || ''}"
-                 title="按住拖动可磁吸跳过课间单次调课，点击可调到任意日期">
+                 title="按住拖动可磁吸跳过课间单次调课，点击可设置背景色或调课">
               <div class="course-title">
                 ${c.isMoved ? '<span class="badge-moved">调</span>' : ''}
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.title)}</span>
@@ -772,10 +822,12 @@
           }
         }
 
+        const dayOv = appState.data.dayOverrides && appState.data.dayOverrides[ds];
+        const mBadge = dayOv ? (dayOv.type === 'holiday' ? `<span class="day-badge holiday">休</span>` : `<span class="day-badge makeup">${escapeHtml(dayOv.label || '补')}</span>`) : '';
         cells.push(`
           <div class="month-cell ${d.getMonth() !== m ? 'other-month' : ''} ${isTd ? 'today' : ''}" data-month-date="${ds}">
             <div class="month-cell-top">
-              <span>${d.getDate()}日</span>
+              <span>${d.getDate()}日${mBadge}</span>
               <span style="font-size:10px;color:${isTd ? 'var(--apple-blue)' : 'var(--text-muted)'};">${isTd ? '今天' : `${visibleCourses.length}课${works.length ? '·' + works.length + '活' : ''}`}</span>
             </div>
             <div class="month-cell-body">
@@ -812,10 +864,8 @@
       btn.addEventListener('click', () => { anchorDate = parseDate(btn.dataset.jumpDay); render(); });
     });
     document.querySelectorAll('[data-header-date]').forEach(el => {
-      el.addEventListener('dblclick', () => {
-        anchorDate = parseDate(el.dataset.headerDate);
-        currentView = currentView === 'day' ? 'week' : 'day';
-        render();
+      el.addEventListener('click', () => {
+        if (!isUiLocked) openDayModeModal(el.dataset.headerDate);
       });
     });
 
@@ -1066,11 +1116,30 @@
     showToast(`单次调课成功：已磁吸至 ${params.targetDate.slice(5)} ${params.targetStart}-${params.targetEnd}`);
   }
 
+  let rsColorCtx = { color: 'sky', customBg: '' };
+  const RS_COLOR_NAMES = { sky: '天空蓝', emerald: '护眼翠绿', violet: '优雅浅紫', indigo: '沉稳靛蓝', rose: '温柔玫粉', blue: '晴空浅蓝', cyan: '清澈青色', teal: '薄荷松绿', amber: '暖阳琥珀' };
+  function syncRsColorSelection() {
+    document.querySelectorAll('[data-rs-color]').forEach(b => b.classList.toggle('active', !rsColorCtx.customBg && b.dataset.rsColor === rsColorCtx.color));
+    const lbl = document.getElementById('rs-color-label');
+    if (lbl) lbl.textContent = rsColorCtx.customBg ? `自定义 ${rsColorCtx.customBg.toUpperCase()}` : (RS_COLOR_NAMES[rsColorCtx.color] || '系统配色');
+    const inp = document.getElementById('rs-custom-color');
+    if (inp && rsColorCtx.customBg) inp.value = rsColorCtx.customBg;
+  }
+
   // ===== 弹窗逻辑 =====
   function openRescheduleModal(ctx) {
     activeRescheduleCtx = ctx;
+    const rsBox = document.querySelector('#modal-reschedule .modal');
+    if (rsBox) { rsBox.style.transform = ''; rsBox.dataset.dragOx = '0'; rsBox.dataset.dragOy = '0'; }
     const isClass = ctx.source === 'class';
-    document.getElementById('rs-modal-title').textContent = isClass ? '🔄 班级课表单次调课 / 停课' : '🔄 个人课表单次调课 / 停课';
+    const cList = isClass ? (appState.data.classTimetable?.courses || []) : (appState.data.timetable?.courses || []);
+    const baseCourse = cList.find(c => c.id === ctx.courseId);
+    rsColorCtx = {
+      color: (baseCourse && baseCourse.color) || guessColor(ctx.title),
+      customBg: (baseCourse && baseCourse.customBg) || '',
+    };
+    syncRsColorSelection();
+    document.getElementById('rs-modal-title').textContent = isClass ? '🔄 班级课表设置 / 单次调课' : '🔄 个人课表设置 / 单次调课';
     document.getElementById('rs-origin-info').innerHTML =
       `原定上课：<strong>${ctx.origDate}（${WEEKDAYS_CN[parseDate(ctx.origDate).getDay()]}）${ctx.origStart}-${ctx.origEnd}</strong>` +
       (ctx.overrideId ? ' · <span style="color:var(--apple-orange);">当前已有单次调课/停课记录</span>' : '');
@@ -1089,8 +1158,12 @@
 
   function openWorkModal(workId, defaults = null) {
     activeWorkId = workId;
+    const wkBox = document.querySelector('#modal-work .modal');
+    if (wkBox) { wkBox.style.transform = ''; wkBox.dataset.dragOx = '0'; wkBox.dataset.dragOy = '0'; }
     const w = workId ? appState.data.works.find(x => x.id === workId) : null;
-    document.getElementById('wk-modal-title').textContent = w ? '✏️ 编辑顶层干活事项' : '📌 添加顶层干活事项';
+    document.getElementById('wk-modal-title').textContent = w ? '✏️ 编辑待办事项' : '📌 添加待办事项';
+    const aiRawEl = document.getElementById('wk-ai-raw');
+    if (aiRawEl) aiRawEl.value = '';
     document.getElementById('wk-title').value = w ? w.title : '';
     document.getElementById('wk-date').value = w ? w.date : (defaults?.date || fmtDate(anchorDate));
     document.getElementById('wk-start').value = w ? w.start : (defaults?.start || '09:00');
@@ -1101,7 +1174,7 @@
     document.getElementById('btn-wk-delete').classList.toggle('hidden', !w);
     updateWorkConflictPreview();
     openModal('modal-work');
-    setTimeout(() => document.getElementById('wk-title').focus(), 30);
+    setTimeout(() => document.getElementById(w ? 'wk-title' : 'wk-ai-raw')?.focus(), 30);
   }
 
   function updateWorkConflictPreview() {
@@ -1379,55 +1452,92 @@
     if (!text) return null;
     const now = new Date();
     let targetDate = fmtDate(anchorDate);
-    if (/今天|今日/.test(text)) { targetDate = fmtDate(now); text = text.replace(/今天|今日/g, ''); }
-    else if (/明天|明日/.test(text)) { targetDate = fmtDate(addDays(now, 1)); text = text.replace(/明天|明日/g, ''); }
-    else if (/后天/.test(text)) { targetDate = fmtDate(addDays(now, 2)); text = text.replace(/后天/g, ''); }
-    else {
-      const wdMatch = text.match(/(?:星期|周)([一二三四五六日天])/);
-      if (wdMatch) {
-        const wdMap = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7 };
-        const mon = getMondayOf(anchorDate);
-        targetDate = fmtDate(addDays(mon, wdMap[wdMatch[1]] - 1));
-        text = text.replace(wdMatch[0], '');
-      }
+
+    // 1) Parse explicit full year-month-day first (e.g. 2026年11月28日 / 2026-11-28 / 2026/11/28)
+    const fullDateM = text.match(/(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})日?/);
+    if (fullDateM) {
+      targetDate = `${fullDateM[1]}-${pad2(Number(fullDateM[2]))}-${pad2(Number(fullDateM[3]))}`;
+      text = text.replace(fullDateM[0], ' ');
+    } else if (/今天|今日/.test(text)) {
+      targetDate = fmtDate(now);
+      text = text.replace(/今天|今日/g, ' ');
+    } else if (/明天|明日/.test(text)) {
+      targetDate = fmtDate(addDays(now, 1));
+      text = text.replace(/明天|明日/g, ' ');
+    } else if (/大后天/.test(text)) {
+      targetDate = fmtDate(addDays(now, 3));
+      text = text.replace(/大后天/g, ' ');
+    } else if (/后天/.test(text)) {
+      targetDate = fmtDate(addDays(now, 2));
+      text = text.replace(/后天/g, ' ');
+    } else {
       const dateMatch = text.match(/(\d{1,2})[月/-](\d{1,2})日?/);
       if (dateMatch) {
         targetDate = `${now.getFullYear()}-${pad2(Number(dateMatch[1]))}-${pad2(Number(dateMatch[2]))}`;
-        text = text.replace(dateMatch[0], '');
+        text = text.replace(dateMatch[0], ' ');
+      }
+      const wdMatch = text.match(/(下)?(?:星期|周)([一二三四五六日天])/);
+      if (wdMatch) {
+        const wdMap = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7 };
+        const mon = getMondayOf(anchorDate);
+        const offsetDays = (wdMatch[1] ? 7 : 0) + (wdMap[wdMatch[2]] - 1);
+        if (!dateMatch) targetDate = fmtDate(addDays(mon, offsetDays));
+        text = text.replace(wdMatch[0], ' ');
       }
     }
 
+    // 2) Parse time range or single clock expression
     let start = '09:00', end = '10:00';
-    const rangeM = text.match(/(\d{1,2})[:：.](\d{2})\s*[-~—到至]\s*(\d{1,2})[:：.](\d{2})/);
+    const rangeM = text.match(/(上午|早上|清晨|中午|下午|傍晚|晚上)?\s*(\d{1,2})[:：.](\d{2})\s*[-~—到至]\s*(上午|早上|清晨|中午|下午|傍晚|晚上)?\s*(\d{1,2})[:：.](\d{2})/);
     if (rangeM) {
-      start = `${pad2(Number(rangeM[1]))}:${rangeM[2]}`;
-      end = `${pad2(Number(rangeM[3]))}:${rangeM[4]}`;
-      text = text.replace(rangeM[0], '');
+      let sh = Number(rangeM[2]), eh = Number(rangeM[5]);
+      if ((rangeM[1] === '下午' || rangeM[1] === '傍晚' || rangeM[1] === '晚上') && sh < 12) sh += 12;
+      const ap2 = rangeM[4] || rangeM[1];
+      if ((ap2 === '下午' || ap2 === '傍晚' || ap2 === '晚上') && eh < 12) eh += 12;
+      start = `${pad2(sh)}:${rangeM[3]}`;
+      end = `${pad2(eh)}:${rangeM[6]}`;
+      text = text.replace(rangeM[0], ' ');
     } else {
-      const cnTimeM = text.match(/(上午|下午|晚上)?\s*(\d{1,2})点(?:(\d{1,2})分?|半)?\s*(?:[-~—到至]\s*(上午|下午|晚上)?\s*(\d{1,2})点(?:(\d{1,2})分?|半)?)?/);
+      const cnTimeM = text.match(/(上午|早上|清晨|中午|下午|傍晚|晚上)?\s*(\d{1,2})[点时](?:(\d{1,2})分?|半)?\s*(?:[-~—到至]\s*(上午|早上|清晨|中午|下午|傍晚|晚上)?\s*(\d{1,2})[点时](?:(\d{1,2})分?|半)?)?/);
       if (cnTimeM) {
-        const to24 = (ap, hStr, mStr, halfStr) => {
+        const to24 = (ap, hStr, mStr, isHalf) => {
           let h = Number(hStr);
-          if ((ap === '下午' || ap === '晚上') && h < 12) h += 12;
-          const m = halfStr === '半' ? 30 : (mStr ? Number(mStr) : 0);
+          if ((ap === '下午' || ap === '傍晚' || ap === '晚上') && h < 12) h += 12;
+          const m = isHalf ? 30 : (mStr ? Number(mStr) : 0);
           return h * 60 + m;
         };
-        const sM = to24(cnTimeM[1], cnTimeM[2], cnTimeM[3], cnTimeM[0].includes('点半') && !cnTimeM[5] ? '半' : '');
+        const parts = cnTimeM[0].split(/[-~—到至]/);
+        const head = parts[0] || '';
+        const tail = parts[1] || '';
+        const sM = to24(cnTimeM[1], cnTimeM[2], cnTimeM[3], /[点时]半/.test(head));
         start = fromMin(sM);
         if (cnTimeM[5]) {
           const ap2 = cnTimeM[4] || cnTimeM[1];
-          const tail = cnTimeM[0].split(/[-~—到至]/)[1] || '';
-          const eM = to24(ap2, cnTimeM[5], cnTimeM[6], tail.includes('半') ? '半' : '');
+          const eM = to24(ap2, cnTimeM[5], cnTimeM[6], /[点时]半/.test(tail));
           end = fromMin(Math.max(sM + 15, eM));
         } else {
           end = fromMin(sM + 60);
         }
-        text = text.replace(cnTimeM[0], '');
+        text = text.replace(cnTimeM[0], ' ');
+      } else {
+        const singleHM = text.match(/(上午|早上|中午|下午|傍晚|晚上)?\s*(\d{1,2})[:：](\d{2})/);
+        if (singleHM) {
+          let sh = Number(singleHM[2]);
+          if ((singleHM[1] === '下午' || singleHM[1] === '傍晚' || singleHM[1] === '晚上') && sh < 12) sh += 12;
+          const sM = sh * 60 + Number(singleHM[3]);
+          start = fromMin(sM);
+          end = fromMin(sM + 60);
+          text = text.replace(singleHM[0], ' ');
+        }
       }
     }
 
-    const urgent = /重要|紧急|加急/.test(text);
-    const title = text.replace(/重要|紧急|加急/g, '').replace(/\s+/g, ' ').trim() || '临时工作事项';
+    const urgent = /重要|紧急|加急|务必/.test(text);
+    const title = text
+      .replace(/【?通知】?[:：]?|各位老师好?[，,：:]?|请于|请在|按时|准时|收到请回复|重要|紧急|加急|务必/g, ' ')
+      .replace(/^[，,。；;：:\s]+|[，,。；;：:\s]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() || '临时工作事项';
     return { date: targetDate, start, end, title, urgent };
   }
 
@@ -1485,8 +1595,114 @@
     showToast('已导出完整日历备份（.json）');
   }
 
-  // ===== 双击最左侧时间轴：智能批量排作息时间 =====
+  // ===== 双击最左侧时间轴：智能批量排作息时间（支持 AI 自然语言描述） =====
   let bellBatchDraft = [];
+  let bellCustomGaps = {};
+  let bellEvDur = null;
+  let bellEvBreak = null;
+
+  function cnNumToInt(s) {
+    const m = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+    if (m[s]) return m[s];
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function parseCnClockToMin(seg, defaultAp = '') {
+    if (!seg) return null;
+    const m = String(seg).match(/(早上|早晨|上午|中午|下午|晚上|晚)?\s*(\d{1,2})\s*(?:[:：]\s*(\d{2})|[点时]\s*(?:(\d{1,2})分?|半)?)/);
+    if (!m) return null;
+    const ap = m[1] || defaultAp;
+    let h = Number(m[2]);
+    if ((ap === '下午' || ap === '晚上' || ap === '晚') && h < 12) h += 12;
+    if (ap === '中午' && h < 11) h += 12;
+    let min = 0;
+    if (m[3] !== undefined) min = Number(m[3]);
+    else if (m[0].includes('半')) min = 30;
+    else if (m[4] !== undefined) min = Number(m[4]);
+    return h * 60 + min;
+  }
+
+  function parseBellScheduleText(raw) {
+    const txt = String(raw || '').trim();
+    if (!txt) return null;
+    const res = { customGaps: {}, notes: [] };
+
+    const durM = txt.match(/每节(?:课)?(?:时长)?\s*(\d{2,3})\s*分|(\d{2,3})\s*分钟?\s*(?:一|每)节/);
+    if (durM) { res.classDur = Number(durM[1] || durM[2]); res.notes.push(`每节${res.classDur}分`); }
+
+    const pairRe = /第?\s*([一二三四五六七八九十\d]{1,2})\s*节?\s*(?:和|与|跟|到|、)\s*第?\s*([一二三四五六七八九十\d]{1,2})\s*节?(?:之间)?[^，。；\n]*?(?:大课间|课间|休息|休)\s*(\d{1,3})\s*分/g;
+    let pm;
+    while ((pm = pairRe.exec(txt)) !== null) {
+      const p1 = cnNumToInt(pm[1]), gap = Number(pm[3]);
+      if (p1 >= 1 && p1 <= 12 && gap >= 0) {
+        res.customGaps[p1] = gap;
+        res.notes.push(`第${p1}-${p1 + 1}节间休${gap}分`);
+      }
+    }
+    const afterRe = /第\s*([一二三四五六七八九十\d]{1,2})\s*节(?:后|下课后)[^，。；\n]*?(?:大课间|休息|休)\s*(\d{1,3})\s*分/g;
+    let am;
+    while ((am = afterRe.exec(txt)) !== null) {
+      const p1 = cnNumToInt(am[1]), gap = Number(am[2]);
+      if (p1 >= 1 && p1 <= 12 && gap >= 0 && res.customGaps[p1] === undefined) {
+        res.customGaps[p1] = gap;
+        res.notes.push(`第${p1}节后休${gap}分`);
+      }
+    }
+
+    const brkM = txt.match(/(?:常规|普通|一般)?课间(?:休息)?\s*(\d{1,2})\s*分/);
+    if (brkM) { res.breakDur = Number(brkM[1]); res.notes.push(`常规课间${res.breakDur}分`); }
+
+    const amSeg = txt.match(/(?:早上|早晨|上午)[^，。；\n]*/);
+    if (amSeg) {
+      const tMin = parseCnClockToMin(amSeg[0], '上午');
+      if (tMin !== null) { res.amStart = fromMin(tMin); res.notes.push(`上午${res.amStart}起`); }
+      const cM = amSeg[0].match(/([一二三四五六\d])\s*节/);
+      if (cM) res.amCount = cnNumToInt(cM[1]);
+    }
+
+    const pmSeg = txt.match(/下午[^，。；\n]*/);
+    if (pmSeg) {
+      const tMin = parseCnClockToMin(pmSeg[0], '下午');
+      if (tMin !== null) { res.pmStart = fromMin(tMin); res.notes.push(`下午${res.pmStart}起`); }
+      const cM = pmSeg[0].match(/([一二三四五六\d])\s*节/);
+      if (cM) res.pmCount = cnNumToInt(cM[1]);
+    }
+
+    const evSeg = txt.match(/(?:晚上|晚自习)[^。；\n]*?(?=(?:早上|早晨|上午|下午)|$)/);
+    if (evSeg) {
+      const sTxt = evSeg[0];
+      const rangeM = sTxt.match(/(\d{1,2}(?:[:：]\d{2}|[点时](?:\d{1,2}分?|半)?))\s*(?:到|至|-|~|—)\s*(\d{1,2}(?:[:：]\d{2}|[点时](?:\d{1,2}分?|半)?))/);
+      const evBrkM = sTxt.match(/(?:中间|每节之间|课间|休息|休)\s*(\d{1,2})\s*分/);
+      if (evBrkM) { res.evBreak = Number(evBrkM[1]); res.notes.push(`晚自习间休${res.evBreak}分`); }
+      const evCntM = sTxt.match(/(?:共|上)?\s*([一二三四\d])\s*节/);
+      if (evCntM) res.evCount = cnNumToInt(evCntM[1]);
+      const evDurM = sTxt.match(/每节\s*(\d{2})\s*分/);
+      if (evDurM) res.evDur = Number(evDurM[1]);
+
+      if (rangeM) {
+        const eStart = parseCnClockToMin(rangeM[1], '晚上');
+        const eEnd = parseCnClockToMin(rangeM[2], '晚上');
+        if (eStart !== null && eEnd !== null && eEnd > eStart) {
+          res.evStart = fromMin(eStart);
+          const total = eEnd - eStart;
+          const eb = res.evBreak ?? 10;
+          if (!res.evCount) {
+            const targetPer = res.evDur || ((res.classDur || Number(document.getElementById('bb-class-dur').value) || 40) + 5);
+            res.evCount = Math.max(1, Math.min(4, Math.round((total + eb) / (targetPer + eb))));
+          }
+          if (!res.evDur && res.evCount > 0) {
+            res.evDur = Math.max(20, Math.round((total - eb * (res.evCount - 1)) / res.evCount));
+          }
+          res.notes.push(`晚自习${res.evStart}-${fromMin(eEnd)}(${res.evCount}节)`);
+        }
+      } else {
+        const eStart = parseCnClockToMin(sTxt, '晚上');
+        if (eStart !== null) { res.evStart = fromMin(eStart); res.notes.push(`晚自习${res.evStart}起`); }
+      }
+    }
+    return res;
+  }
 
   function formatGapDuration(mins) {
     if (mins <= 0) return '紧接下节';
@@ -1498,6 +1714,9 @@
   }
 
   function openBellBatchModal() {
+    bellCustomGaps = {}; bellEvDur = null; bellEvBreak = null;
+    const sumEl = document.getElementById('bb-ai-summary');
+    if (sumEl) sumEl.classList.add('hidden');
     const cur = getPeriods().slice().sort((a, b) => toMin(a.start) - toMin(b.start));
     const am = cur.filter(p => toMin(p.start) < 12 * 60);
     const pm = cur.filter(p => toMin(p.start) >= 12 * 60 && toMin(p.start) < 18 * 60);
@@ -1549,7 +1768,8 @@
     for (let i = 1; i <= amCount; i++) {
       const s = cursor, e = s + classDur;
       list.push({ num: list.length + 1, label: `第${i}节`, start: fromMin(s), end: fromMin(e) });
-      cursor = e + (i === bigAfter ? bigDur : breakDur);
+      const g = bellCustomGaps[i] !== undefined ? bellCustomGaps[i] : (i === bigAfter ? bigDur : breakDur);
+      cursor = e + g;
     }
 
     const amLastEnd = list.length ? toMin(list[list.length - 1].end) : amStart;
@@ -1560,17 +1780,20 @@
 
     cursor = pmStart;
     for (let i = 1; i <= pmCount; i++) {
+      const idx = amCount + i;
       const s = cursor, e = s + classDur;
-      list.push({ num: list.length + 1, label: `第${amCount + i}节`, start: fromMin(s), end: fromMin(e) });
-      cursor = e + breakDur;
+      list.push({ num: list.length + 1, label: `第${idx}节`, start: fromMin(s), end: fromMin(e) });
+      const g = bellCustomGaps[idx] !== undefined ? bellCustomGaps[idx] : breakDur;
+      cursor = e + g;
     }
 
-    const evDur = Math.max(30, Math.min(60, classDur + 5));
+    const evDur = bellEvDur || Math.max(30, Math.min(60, classDur + 5));
+    const evBrk = bellEvBreak !== null ? bellEvBreak : 10;
     cursor = evStart;
     for (let i = 1; i <= evCount; i++) {
       const s = cursor, e = s + evDur;
       list.push({ num: list.length + 1, label: `晚自习${i}`, start: fromMin(s), end: fromMin(e) });
-      cursor = e + 10;
+      cursor = e + evBrk;
     }
 
     bellBatchDraft = list;
@@ -1588,7 +1811,7 @@
         if (curEndH <= 12.5 && toMin(next.start) >= 12.5 * 60) {
           gapLabel = `🍱 午休 ${formatGapDuration(gap)}`;
         } else if (curEndH < 18 && toMin(next.start) >= 18 * 60) {
-          gapLabel = `🍽 晚休 ${formatGapDuration(gap)}`;
+          gapLabel = `🌆 晚读 ${formatGapDuration(gap)}`;
         } else if (gap >= 20) {
           gapLabel = `🏃 大课间 ${formatGapDuration(gap)}`;
         } else {
@@ -2042,11 +2265,45 @@
     document.getElementById('btn-si-any').addEventListener('click', () => executeSmartImport('auto'));
 
     // 双击最左侧时间轴 -> 智能批量排作息弹窗事件
+    function applyBellAiParseProd() {
+      const parsed = parseBellScheduleText(document.getElementById('bb-ai-input').value);
+      if (!parsed) { showToast('请先输入或描述一段作息时间'); return; }
+      bellCustomGaps = parsed.customGaps || {};
+      if (parsed.classDur) document.getElementById('bb-class-dur').value = parsed.classDur;
+      if (parsed.breakDur !== undefined) document.getElementById('bb-break-dur').value = parsed.breakDur;
+      if (parsed.amStart) document.getElementById('bb-am-start').value = parsed.amStart;
+      if (parsed.amCount) document.getElementById('bb-am-count').value = parsed.amCount;
+      if (parsed.pmStart) document.getElementById('bb-pm-start').value = parsed.pmStart;
+      if (parsed.pmCount !== undefined) document.getElementById('bb-pm-count').value = parsed.pmCount;
+      if (parsed.evStart) document.getElementById('bb-ev-start').value = parsed.evStart;
+      if (parsed.evCount !== undefined) document.getElementById('bb-ev-count').value = parsed.evCount;
+      bellEvDur = parsed.evDur || null;
+      bellEvBreak = parsed.evBreak !== undefined ? parsed.evBreak : null;
+      recalcBellBatchDraft();
+      const sumEl = document.getElementById('bb-ai-summary');
+      if (sumEl) {
+        sumEl.textContent = `✅ 已自动识别：${parsed.notes.length ? parsed.notes.join(' · ') : '已微调参数'}（下方每节与课间已重算）`;
+        sumEl.classList.remove('hidden');
+      }
+      showToast('⚡ AI 已识别作息参数并重排全天节次');
+    }
+    document.getElementById('btn-bb-ai-parse').addEventListener('click', applyBellAiParseProd);
+    document.getElementById('bb-ai-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); applyBellAiParseProd(); }
+    });
+    document.querySelectorAll('[data-bb-ai-ex]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('bb-ai-input').value = btn.dataset.bbAiEx;
+        applyBellAiParseProd();
+      });
+    });
+    ['bb-big-after', 'bb-big-dur'].forEach(id => document.getElementById(id).addEventListener('input', () => { bellCustomGaps = {}; }));
     ['bb-class-dur', 'bb-break-dur', 'bb-big-after', 'bb-big-dur', 'bb-am-start', 'bb-am-count', 'bb-pm-start', 'bb-pm-count', 'bb-ev-start', 'bb-ev-count'].forEach(id => {
       document.getElementById(id).addEventListener('input', recalcBellBatchDraft);
     });
     document.querySelectorAll('[data-bell-preset]').forEach(btn => {
       btn.addEventListener('click', () => {
+        bellCustomGaps = {}; bellEvDur = null; bellEvBreak = null;
         const p = btn.dataset.bellPreset;
         if (p === '40-15') {
           document.getElementById('bb-class-dur').value = 40;
@@ -2136,6 +2393,22 @@
       }
     });
 
+    // 课程颜色选择与调课保存
+    document.querySelectorAll('[data-rs-color]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        rsColorCtx.color = btn.dataset.rsColor;
+        rsColorCtx.customBg = '';
+        syncRsColorSelection();
+      });
+    });
+    const rsCustomColInp = document.getElementById('rs-custom-color');
+    if (rsCustomColInp) {
+      rsCustomColInp.addEventListener('input', (e) => {
+        rsColorCtx.customBg = e.target.value;
+        syncRsColorSelection();
+      });
+    }
+
     document.getElementById('btn-rs-save').addEventListener('click', async () => {
       if (!activeRescheduleCtx) return;
       const targetDate = document.getElementById('rs-target-date').value;
@@ -2144,11 +2417,42 @@
       if (!targetDate || !targetStart || !targetEnd || toMin(targetEnd) <= toMin(targetStart)) {
         showToast('请填写正确的目标日期和起止时间'); return;
       }
+      const nextTitle = document.getElementById('rs-title').value.trim() || activeRescheduleCtx.title;
+      const nextNote = document.getElementById('rs-note').value.trim();
+      const now = Date.now();
+      const isClass = activeRescheduleCtx.source === 'class';
+      const cArr = isClass ? (appState.data.classTimetable?.courses || []) : (appState.data.timetable?.courses || []);
+      const baseC = cArr.find(c => c.id === activeRescheduleCtx.courseId);
+      let colorUpdated = false;
+      if (baseC) {
+        const prevTitle = baseC.title;
+        if (baseC.color !== rsColorCtx.color || (baseC.customBg || '') !== (rsColorCtx.customBg || '')) {
+          baseC.color = rsColorCtx.color;
+          baseC.customBg = rsColorCtx.customBg;
+          baseC.updatedAt = now;
+          colorUpdated = true;
+        }
+        if (document.getElementById('rs-apply-same')?.checked) {
+          cArr.forEach(item => {
+            if (!item.deleted && (item.title === prevTitle || item.title === nextTitle)) {
+              item.color = rsColorCtx.color;
+              item.customBg = rsColorCtx.customBg;
+              item.updatedAt = now;
+            }
+          });
+        }
+      }
       closeModal('modal-reschedule');
+      const timeChanged = targetDate !== activeRescheduleCtx.curDate || targetStart !== activeRescheduleCtx.curStart || targetEnd !== activeRescheduleCtx.curEnd || nextTitle !== activeRescheduleCtx.title || nextNote !== (activeRescheduleCtx.note || '');
+      if (!timeChanged && colorUpdated) {
+        render(); await persistAndScheduleSync();
+        showToast('🎨 已更新课程背景色');
+        return;
+      }
       await applySingleCourseMove({
         ...activeRescheduleCtx,
-        title: document.getElementById('rs-title').value.trim() || activeRescheduleCtx.title,
-        note: document.getElementById('rs-note').value.trim(),
+        title: nextTitle,
+        note: nextNote,
         targetDate, targetStart, targetEnd,
       });
     });
@@ -2178,7 +2482,43 @@
       showToast('已恢复原课表');
     });
 
-    // 顶层干活弹窗
+    // 顶层待办弹窗 + AI 自动识别填充 + 拖动移位
+    function makeModalDraggable(modalId) {
+      const box = document.querySelector(`#${modalId} .modal`);
+      const hdr = document.querySelector(`#${modalId} .modal-header`);
+      if (!box || !hdr) return;
+      hdr.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button')) return;
+        const sx = e.clientX, sy = e.clientY;
+        const ox = Number(box.dataset.dragOx || 0), oy = Number(box.dataset.dragOy || 0);
+        function onMove(ev) {
+          const nx = ox + ev.clientX - sx, ny = oy + ev.clientY - sy;
+          box.dataset.dragOx = String(nx); box.dataset.dragOy = String(ny);
+          box.style.transform = `translate(${nx}px, ${ny}px)`;
+        }
+        function onUp() { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); }
+        window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
+      });
+    }
+    ['modal-work', 'modal-reschedule', 'modal-ai-platform', 'modal-day-mode'].forEach(makeModalDraggable);
+
+    function fillWorkModalFromAi() {
+      const raw = document.getElementById('wk-ai-raw')?.value || '';
+      const parsed = parseNaturalLanguageWork(raw);
+      if (!parsed) { showToast('请先粘贴或输入一段通知内容'); return; }
+      document.getElementById('wk-title').value = parsed.title;
+      document.getElementById('wk-date').value = parsed.date;
+      document.getElementById('wk-start').value = parsed.start;
+      document.getElementById('wk-end').value = parsed.end;
+      document.getElementById('wk-urgent').checked = parsed.urgent;
+      updateWorkConflictPreview();
+      showToast(`✨ 已自动识别：${parsed.date.slice(5)} ${parsed.start}-${parsed.end}`);
+    }
+    document.getElementById('btn-wk-ai-fill')?.addEventListener('click', fillWorkModalFromAi);
+    document.getElementById('wk-ai-raw')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); fillWorkModalFromAi(); }
+    });
+
     ['wk-date', 'wk-start', 'wk-end'].forEach(id => document.getElementById(id).addEventListener('input', updateWorkConflictPreview));
     document.getElementById('btn-wk-save').addEventListener('click', async () => {
       const title = document.getElementById('wk-title').value.trim();
@@ -2225,8 +2565,10 @@
       const start = document.getElementById('tt-add-start').value, end = document.getElementById('tt-add-end').value;
       const title = document.getElementById('tt-add-title').value.trim();
       if (!title || toMin(end) <= toMin(start)) { showToast('请输入课程名称与正确起止时间'); return; }
+      const useCustomCol = document.getElementById('tt-add-use-color')?.checked;
+      const customBg = useCustomCol ? (document.getElementById('tt-add-color')?.value || '') : '';
       const targetArr = activeTtTab === 'class' ? appState.data.classTimetable.courses : appState.data.timetable.courses;
-      targetArr.push({ id: uid(activeTtTab === 'class' ? 'cc' : 'c'), weekday, start, end, title, room: '', parity: 'all', color: guessColor(title), updatedAt: Date.now(), deleted: false });
+      targetArr.push({ id: uid(activeTtTab === 'class' ? 'cc' : 'c'), weekday, start, end, title, room: '', parity: 'all', color: guessColor(title), customBg, updatedAt: Date.now(), deleted: false });
       document.getElementById('tt-add-title').value = '';
       renderTimetableManager(); render(); await persistAndScheduleSync();
     });
@@ -2318,6 +2660,194 @@
       window.desktopApi.onStateUpdated((next) => { appState = next; render(); });
       window.desktopApi.onLockChanged((locked) => { applyLockUi(locked); });
     }
+
+    // 待排清单（随手记事 + 一键智能排入今日空堂）
+    document.getElementById('btn-inbox-toggle').addEventListener('click', () => {
+      const dr = document.getElementById('inbox-drawer');
+      dr.classList.toggle('hidden');
+      if (!dr.classList.contains('hidden')) document.getElementById('inbox-input').focus();
+    });
+    const addInboxEntry = async () => {
+      const inp = document.getElementById('inbox-input');
+      const txt = inp.value.trim();
+      if (!txt) return;
+      if (!Array.isArray(appState.data.inbox)) appState.data.inbox = [];
+      appState.data.inbox.unshift({ id: uid('ib'), text: txt, done: false });
+      inp.value = '';
+      renderInbox();
+      await persistAndScheduleSync(false);
+    };
+    document.getElementById('btn-inbox-add').addEventListener('click', addInboxEntry);
+    document.getElementById('inbox-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addInboxEntry(); });
+
+    // 上课前 5 分钟 & 待办到点提醒开关与试听
+    document.getElementById('opt-reminder').addEventListener('change', async (e) => {
+      appState.config.ui.reminderEnabled = !!e.target.checked;
+      await persistAndScheduleSync(false);
+      showToast(appState.config.ui.reminderEnabled ? '🔔 已开启上课前 5 分钟与待办到点提醒' : '已静音卡片提醒');
+    });
+    document.getElementById('btn-test-reminder').addEventListener('click', () => {
+      showReminderCard({ title: '🔔 还有 5 分钟上课（试听）', body: '<strong>902 历史</strong><br/>上课时间：08:00 - 08:40，请提前准备教学资料', urgent: false });
+    });
+    document.getElementById('btn-rem-close').addEventListener('click', () => document.getElementById('reminder-popup').classList.add('hidden'));
+    document.getElementById('btn-rem-action').addEventListener('click', async () => {
+      if (activeReminderWorkId) {
+        const w = (appState.data.works || []).find(x => x.id === activeReminderWorkId);
+        if (w) { w.done = true; w.updatedAt = Date.now(); render(); await persistAndScheduleSync(); showToast(`☑ 已完成：${w.title}`); }
+      }
+      document.getElementById('reminder-popup').classList.add('hidden');
+    });
+
+    // 法定节假日 / 周末补课快捷标记弹窗事件
+    document.querySelectorAll('[data-hol-preset]').forEach(btn => {
+      btn.addEventListener('click', () => { document.getElementById('dm-holiday-label').value = btn.dataset.holPreset; });
+    });
+    document.getElementById('btn-dm-set-holiday').addEventListener('click', async () => {
+      if (!activeDayModeDate) return;
+      if (!appState.data.dayOverrides) appState.data.dayOverrides = {};
+      const label = document.getElementById('dm-holiday-label').value.trim() || '法定节假日';
+      appState.data.dayOverrides[activeDayModeDate] = { type: 'holiday', label };
+      closeModal('modal-day-mode'); render(); await persistAndScheduleSync(false);
+      showToast(`🏖 已将 ${activeDayModeDate.slice(5)} 标记为「${label}」`);
+    });
+    document.getElementById('btn-dm-set-makeup').addEventListener('click', async () => {
+      if (!activeDayModeDate) return;
+      if (!appState.data.dayOverrides) appState.data.dayOverrides = {};
+      const wd = Number(document.getElementById('dm-makeup-wd').value);
+      const wdNames = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五' };
+      appState.data.dayOverrides[activeDayModeDate] = { type: 'makeup', sourceWeekday: wd, label: `补${wdNames[wd]}` };
+      closeModal('modal-day-mode'); render(); await persistAndScheduleSync(false);
+      showToast(`📚 已将 ${activeDayModeDate.slice(5)} 设为调休补课（按${wdNames[wd]}课表）`);
+    });
+    document.getElementById('btn-dm-clear').addEventListener('click', async () => {
+      if (!activeDayModeDate || !appState.data.dayOverrides) return;
+      delete appState.data.dayOverrides[activeDayModeDate];
+      closeModal('modal-day-mode'); render(); await persistAndScheduleSync(false);
+      showToast(`↩ 已恢复 ${activeDayModeDate.slice(5)} 正常排课`);
+    });
+  }
+
+  function renderInbox() {
+    const box = document.getElementById('inbox-list');
+    const toggleBtn = document.getElementById('btn-inbox-toggle');
+    if (!box || !toggleBtn || !appState) return;
+    const inbox = Array.isArray(appState.data.inbox) ? appState.data.inbox : [];
+    const pendingCnt = inbox.filter(x => !x.done).length;
+    toggleBtn.textContent = pendingCnt ? `📥 待排清单(${pendingCnt})` : '📥 待排清单';
+    box.innerHTML = inbox.map(it => `
+      <div class="inbox-chip ${it.done ? 'done' : ''}">
+        <input type="checkbox" ${it.done ? 'checked' : ''} data-ib-chk="${it.id}" />
+        <span class="ib-txt">${escapeHtml(it.text)}</span>
+        ${!it.done ? `<button class="inbox-auto-btn" data-ib-plan="${it.id}">排入空堂</button>` : ''}
+        <button class="inbox-del-btn" data-ib-del="${it.id}" title="移除">✕</button>
+      </div>
+    `).join('') || `<span style="font-size:11.5px;color:var(--text-muted);">暂无待排事务，可在左侧输入回车记下</span>`;
+
+    box.querySelectorAll('[data-ib-chk]').forEach(el => el.addEventListener('change', async () => {
+      const item = appState.data.inbox.find(x => x.id === el.dataset.ibChk);
+      if (item) { item.done = el.checked; renderInbox(); await persistAndScheduleSync(false); }
+    }));
+    box.querySelectorAll('[data-ib-del]').forEach(el => el.addEventListener('click', async () => {
+      appState.data.inbox = appState.data.inbox.filter(x => x.id !== el.dataset.ibDel);
+      renderInbox(); await persistAndScheduleSync(false);
+    }));
+    box.querySelectorAll('[data-ib-plan]').forEach(el => el.addEventListener('click', async () => {
+      const item = appState.data.inbox.find(x => x.id === el.dataset.ibPlan);
+      if (!item) return;
+      const todayStr = fmtDate(new Date());
+      const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+      const { activeList } = getEffectiveCoursesForDate(todayStr, 'my');
+      const busy = [
+        ...activeList.map(c => [toMin(c.start), toMin(c.end)]),
+        ...(appState.data.works || []).filter(w => !w.deleted && w.date === todayStr).map(w => [toMin(w.start), toMin(w.end)]),
+      ];
+      const periods = getPeriods().filter(p => toMin(p.start) >= Math.max(480, nowMin) && toMin(p.end) <= 1050);
+      const slot = periods.find(p => !busy.some(([bs, be]) => Math.max(toMin(p.start), bs) < Math.min(toMin(p.end), be))) || getPeriods()[1] || getPeriods()[0];
+      if (!slot) return;
+      appState.data.works.push({ id: uid('w'), date: todayStr, start: slot.start, end: slot.end, title: item.text, note: '来自待排清单自动排入', urgent: false, done: false, updatedAt: Date.now(), deleted: false });
+      appState.data.inbox = appState.data.inbox.filter(x => x.id !== item.id);
+      if (appState.config.ui.homeroomMode) await setHomeroomMode(false);
+      else { appState.config.ui.showWork = true; render(); await persistAndScheduleSync(); }
+      showToast(`📥 已为「${item.text}」排入今日空堂 ${slot.start}-${slot.end}`);
+    }));
+  }
+
+  const firedReminders = new Set();
+  let activeReminderWorkId = null;
+  let reminderAutoHide = null;
+
+  function playSoftChime() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      [660, 880].forEach((freq, idx) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        const t0 = ctx.currentTime + idx * 0.14;
+        gain.gain.setValueAtTime(0.001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.07, t0 + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t0); osc.stop(t0 + 0.38);
+      });
+    } catch {}
+  }
+
+  function showReminderCard({ title, body, urgent, workId }) {
+    activeReminderWorkId = workId || null;
+    const pop = document.getElementById('reminder-popup');
+    if (!pop) return;
+    pop.classList.toggle('urgent-rem', !!urgent);
+    document.getElementById('rem-title').textContent = title;
+    document.getElementById('rem-title').style.color = urgent ? 'var(--apple-red)' : 'var(--apple-blue)';
+    document.getElementById('rem-body').innerHTML = body;
+    document.getElementById('btn-rem-action').textContent = workId ? '☑ 标记完成' : '知道了';
+    pop.classList.remove('hidden');
+    playSoftChime();
+    clearTimeout(reminderAutoHide);
+    reminderAutoHide = setTimeout(() => pop.classList.add('hidden'), 12000);
+  }
+
+  function checkReminders() {
+    if (!appState || appState.config.ui.reminderEnabled === false) return;
+    const todayStr = fmtDate(new Date());
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const { activeList } = getEffectiveCoursesForDate(todayStr, appState.config.ui.homeroomMode ? 'class' : 'my');
+    for (const c of activeList) {
+      const diff = toMin(c.start) - nowMin;
+      const key = `${todayStr}:c:${c.courseId}:${c.start}`;
+      if (diff >= 1 && diff <= 5 && !firedReminders.has(key)) {
+        firedReminders.add(key);
+        showReminderCard({ title: `🔔 还有 ${diff} 分钟上课`, body: `<strong>${escapeHtml(c.title)}</strong><br/>上课时间：${c.start} - ${c.end}`, urgent: false });
+        return;
+      }
+    }
+    if (!appState.config.ui.homeroomMode) {
+      const wks = (appState.data.works || []).filter(w => !w.deleted && !w.done && w.date === todayStr);
+      for (const w of wks) {
+        const diff = nowMin - toMin(w.start);
+        const key = `${todayStr}:w:${w.id}:${w.start}`;
+        if (diff >= 0 && diff <= 2 && !firedReminders.has(key)) {
+          firedReminders.add(key);
+          showReminderCard({ title: '⏰ 待办事项已到点', body: `<strong>${escapeHtml(w.title)}</strong><br/>计划时间：${w.start} - ${w.end}`, urgent: !!w.urgent, workId: w.id });
+          return;
+        }
+      }
+    }
+  }
+
+  let activeDayModeDate = null;
+  function openDayModeModal(ds) {
+    activeDayModeDate = ds;
+    const d = parseDate(ds);
+    const cur = appState.data.dayOverrides && appState.data.dayOverrides[ds];
+    const dmBox = document.querySelector('#modal-day-mode .modal');
+    if (dmBox) { dmBox.style.transform = ''; dmBox.dataset.dragOx = '0'; dmBox.dataset.dragOy = '0'; }
+    document.getElementById('dm-date-title').textContent = `📅 ${ds}（${WEEKDAYS_CN[d.getDay()]}）排课标记`;
+    if (cur && cur.type === 'holiday') document.getElementById('dm-holiday-label').value = cur.label || '法定节假日';
+    if (cur && cur.type === 'makeup' && cur.sourceWeekday) document.getElementById('dm-makeup-wd').value = String(cur.sourceWeekday);
+    openModal('modal-day-mode');
   }
 
   async function init() {

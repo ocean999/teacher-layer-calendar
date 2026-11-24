@@ -15,6 +15,7 @@
       <div class="topbar-left">
         <span class="topbar-date-title" id="topbar-full-date" title="点击回到今天">2026年11月23日 星期一 农历十月十五</span>
         <span class="topbar-week-chip" id="topbar-week-chip">第13周</span>
+        <span class="topbar-next-pill" id="topbar-next-pill" title="当前或下一节日程实时倒计时">🔔 加载中</span>
       </div>
 
       <div class="topbar-right">
@@ -93,8 +94,18 @@
       </div>
 
       <div class="layer-group">
+        <button class="btn lock-disabled" id="btn-inbox-toggle" title="待排清单（先随手记下，再一键自动排入今日空堂）">📥 待排清单</button>
         <button class="ai-pill-btn lock-disabled" id="btn-ai-bar" title="AI工作平台 · 一句话自然语言智能排程并写入待办">✨ AI工作平台</button>
       </div>
+    </div>
+
+    <!-- 随手待排清单抽屉 -->
+    <div class="inbox-drawer hidden" id="inbox-drawer">
+      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+        <input type="text" class="input" id="inbox-input" placeholder="随手记一句未排时间事务（回车添加）…" style="width:220px;padding:4px 9px;font-size:11.5px;" />
+        <button class="btn btn-primary" id="btn-inbox-add" style="padding:3px 9px;font-size:11.5px;">+ 记下</button>
+      </div>
+      <div id="inbox-list" style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;"></div>
     </div>
 
     <!-- 班主任专属模式横幅（内置三合一智能导入按钮：Excel / Word / 拍照识别） -->
@@ -110,11 +121,14 @@
     <main class="main-viewport" id="main-viewport"></main>
   </div>
 
-  <!-- 弹窗 1：单次调课 / 停课 -->
-  <div class="modal-backdrop hidden" id="modal-reschedule">
+  <!-- 弹窗 1：单次调课 / 停课 / 课程背景色 -->
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-reschedule">
     <div class="modal">
       <div class="modal-header">
-        <span id="rs-modal-title">🔄 单次调课 / 停课</span>
+        <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+          <span id="rs-modal-title">🔄 单次调课 / 课程设置</span>
+          <span style="font-size:11px;font-weight:500;color:var(--text-muted);">可拖动</span>
+        </div>
         <button class="btn btn-icon" data-close="modal-reschedule">✕</button>
       </div>
       <div class="modal-body">
@@ -122,6 +136,22 @@
         <div class="field">
           <label>课程名称</label>
           <input type="text" class="input" id="rs-title" />
+        </div>
+        <div class="field">
+          <label>课程背景色 <span id="rs-color-label" style="color:var(--text-muted);font-size:11.5px;margin-left:6px;">系统配色</span></label>
+          <div class="skin-swatch-row">
+            <button type="button" class="skin-swatch" data-rs-color="sky" title="天空蓝" style="background:#dbeafe;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="emerald" title="护眼翠绿" style="background:#d1fae5;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="violet" title="优雅浅紫" style="background:#ede9fe;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="indigo" title="沉稳靛蓝" style="background:#e0e7ff;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="rose" title="温柔玫粉" style="background:#ffe4e6;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="blue" title="晴空浅蓝" style="background:#e0f2fe;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="cyan" title="清澈青色" style="background:#cffafe;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="teal" title="薄荷松绿" style="background:#ccfbf1;"></button>
+            <button type="button" class="skin-swatch" data-rs-color="amber" title="暖阳琥珀" style="background:#fef3c7;"></button>
+            <input type="color" id="rs-custom-color" class="skin-color-picker" value="#dbeafe" title="自定义任意课程背景色" />
+          </div>
+          <label class="layer-ctrl" style="margin-top:4px;font-size:11.5px;"><input type="checkbox" id="rs-apply-same" checked /> 同步将此背景色应用到所有同名课程</label>
         </div>
         <div class="field-row">
           <div class="field">
@@ -161,24 +191,34 @@
     </div>
   </div>
 
-  <!-- 弹窗 2：顶层干活 / 临时事项 -->
-  <div class="modal-backdrop hidden" id="modal-work">
+  <!-- 弹窗 2：顶层待办 / 临时事项（透明无磨砂遮罩 + 顶部 AI 自动识别通知） -->
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-work">
     <div class="modal">
       <div class="modal-header">
-        <span id="wk-modal-title">📌 添加待办事项</span>
+        <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+          <span id="wk-modal-title">📌 添加待办事项</span>
+          <span style="font-size:11px;font-weight:500;color:var(--text-muted);">可拖动</span>
+        </div>
         <button class="btn btn-icon" data-close="modal-work">✕</button>
       </div>
       <div class="modal-body">
+        <div class="wk-ai-box">
+          <div style="font-size:11.5px;font-weight:600;color:var(--apple-indigo);">✨ AI 自动识别通知（粘贴通知自动填入日期、时间与标题）</div>
+          <div class="wk-ai-row">
+            <input type="text" class="input" id="wk-ai-raw" placeholder="粘贴如：11月26日下午2点半到4点开社政质量分析会 重要" style="background:var(--glass-header);font-size:12px;" />
+            <button class="btn btn-primary" id="btn-wk-ai-fill" style="padding:5px 10px;">⚡ 识别填充</button>
+          </div>
+        </div>
         <div class="field">
           <label>要干什么</label>
           <input type="text" class="input" id="wk-title" placeholder="例如：批改902作业本 / 社政备课组会 / 联系家长" />
         </div>
-        <div class="field-row">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;">
           <div class="field">
             <label>日期</label>
             <input type="date" class="input" id="wk-date" />
           </div>
-          <div class="field" style="justify-content:flex-end;flex-direction:row;align-items:center;gap:14px;padding-top:18px;">
+          <div style="display:flex;align-items:center;gap:12px;padding-bottom:6px;white-space:nowrap;">
             <label class="layer-ctrl"><input type="checkbox" id="wk-urgent" /> 重要标红</label>
             <label class="layer-ctrl"><input type="checkbox" id="wk-done" /> 已完成</label>
           </div>
@@ -237,8 +277,8 @@
             </div>
           </div>
 
-          <!-- 手动添加一节课（按节次或手选时间） -->
-          <div style="padding:10px;border-radius:12px;border:1px solid var(--border-soft);background:var(--glass-pill);display:grid;grid-template-columns:76px 112px 86px 86px 1fr 70px;gap:6px;align-items:center;">
+          <!-- 手动添加一节课（按节次或手选时间 + 可选背景色） -->
+          <div style="padding:10px;border-radius:12px;border:1px solid var(--border-soft);background:var(--glass-pill);display:grid;grid-template-columns:72px 104px 82px 82px 1fr 94px 66px;gap:6px;align-items:center;">
             <select id="tt-add-day" class="select">
               <option value="1">周一</option><option value="2">周二</option><option value="3">周三</option>
               <option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="7">周日</option>
@@ -247,6 +287,10 @@
             <input type="time" id="tt-add-start" class="input" value="08:00" />
             <input type="time" id="tt-add-end" class="input" value="08:40" />
             <input type="text" id="tt-add-title" class="input" placeholder="如：902 历史 / 语文(林)" />
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="color" id="tt-add-color" class="skin-color-picker" value="#dbeafe" title="可选自定义课程背景色" />
+              <label class="layer-ctrl" style="font-size:11px;" title="勾选后使用左侧自定义颜色"><input type="checkbox" id="tt-add-use-color" /> 自定色</label>
+            </div>
             <button class="btn btn-primary" id="btn-tt-add">+ 添加</button>
           </div>
 
@@ -385,6 +429,10 @@
             </div>
             <div style="height:1px;background:var(--border-soft);margin:2px 0;"></div>
             <label class="layer-ctrl"><input type="checkbox" id="opt-autolaunch" /><span>🚀 Windows 开机自动启动（开机后自动后台贴桌面运行）</span></label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <label class="layer-ctrl"><input type="checkbox" id="opt-reminder" checked /><span>🔔 上课前 5 分钟 & 待办到点卡片提醒</span></label>
+              <button class="btn" id="btn-test-reminder" style="padding:2px 9px;font-size:11px;">试听提醒</button>
+            </div>
             <div style="font-size:11.5px;color:var(--text-sub);line-height:1.5;">
               💡 点击右上角 <strong>✕</strong> 关闭界面仅会隐藏到右下角系统托盘保持后台运行；<strong>只有在右下角托盘图标右键点击「彻底退出桌面日历」才会完全退出</strong>。
             </div>
@@ -408,7 +456,7 @@
         <!-- 设置子页 4：关于与在线检查更新 -->
         <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
           <div class="hint-box">
-            当前版本：<strong id="upd-cur-ver">v1.4.3</strong><br/>
+            当前版本：<strong id="upd-cur-ver">v1.5.0</strong><br/>
             在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
           </div>
           <div class="field">
@@ -482,6 +530,22 @@
         <button class="btn btn-icon" data-close="modal-bell-batch">✕</button>
       </div>
       <div class="modal-body">
+        <!-- AI 一句话识别全天作息 -->
+        <div class="wk-ai-box">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:11.5px;font-weight:600;color:var(--apple-indigo);">✨ AI 一句话智能识别作息（自动填入各节课时长、自定义课间与晚自习）</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <button class="btn" data-bb-ai-ex="早上8点开始，上午4节每节40分，第1节和第2节之间休10分，第2节和第3节之间休30分，下午1点半开始上4节，晚自习6点半到9点共3节中间休10分" style="padding:2px 7px;font-size:10.5px;">示例1：冬令含大课间</button>
+              <button class="btn" data-bb-ai-ex="上午7点50开始4节课每节45分，12节之间休10分，23节之间休25分，下午2点上3节，晚自习18:40到21:10休息10分钟" style="padding:2px 7px;font-size:10.5px;">示例2：夏令作息</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <textarea class="textarea" id="bb-ai-input" rows="2" placeholder="直接描述作息，如：早上8点开始，第1节和第2节之间休10分，第2节和第3节之间休30分，下午1点半开始，晚自习6点半到9点半休10分" style="background:var(--glass-header);font-size:12px;"></textarea>
+            <button class="btn btn-primary" id="btn-bb-ai-parse" style="padding:7px 12px;flex-shrink:0;">⚡ AI 识别排表</button>
+          </div>
+          <div id="bb-ai-summary" class="hint-box hidden" style="margin:0;padding:5px 9px;font-size:11.5px;"></div>
+        </div>
+
         <!-- 快捷预设一键套用 -->
         <div class="quick-chip-row">
           <span style="font-size:12px;color:var(--text-muted);">快捷预设：</span>
@@ -719,7 +783,7 @@
   </div>
 
   <!-- 弹窗 10：AI 工作平台（智能自然语言解析排程） -->
-  <div class="modal-backdrop hidden" id="modal-ai-platform">
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-ai-platform">
     <div class="modal">
       <div class="modal-header">
         <span>✨ AI 工作平台 · 一句话智能排程</span>
@@ -784,6 +848,63 @@
         <span></span>
         <button class="btn btn-primary" data-close="modal-features">知道了</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 13：点击日期表头 -> 法定节假日 / 周末调休补课快捷标记 -->
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-day-mode">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <span id="dm-date-title">📅 日期排课标记</span>
+        <button class="btn btn-icon" data-close="modal-day-mode">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="hint-box" style="margin:0;">支持一键标记法定节假日停课，或指定周末某天「按周一~周五课表调休补课」：</div>
+        <div class="field">
+          <label>🏖 法定节假日 / 放假</label>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px;">
+            <button class="btn" data-hol-preset="法定节假日" style="padding:2px 8px;font-size:11px;">法定节假日</button>
+            <button class="btn" data-hol-preset="元旦放假" style="padding:2px 8px;font-size:11px;">元旦休</button>
+            <button class="btn" data-hol-preset="清明放假" style="padding:2px 8px;font-size:11px;">清明休</button>
+            <button class="btn" data-hol-preset="五一放假" style="padding:2px 8px;font-size:11px;">五一休</button>
+            <button class="btn" data-hol-preset="国庆放假" style="padding:2px 8px;font-size:11px;">国庆休</button>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <input type="text" class="input" id="dm-holiday-label" value="法定节假日" placeholder="假期名称，如：国庆放假" />
+            <button class="btn btn-danger" id="btn-dm-set-holiday">标记放假</button>
+          </div>
+        </div>
+        <div style="height:1px;background:var(--border-soft);"></div>
+        <div class="field">
+          <label>📚 调休补课（把另一天的课表整天映射到这一天）</label>
+          <div style="display:flex;gap:6px;">
+            <select class="select" id="dm-makeup-wd">
+              <option value="1">按周一课表上课</option>
+              <option value="2">按周二课表上课</option>
+              <option value="3">按周三课表上课</option>
+              <option value="4" selected>按周四课表上课</option>
+              <option value="5">按周五课表上课</option>
+            </select>
+            <button class="btn btn-amber" id="btn-dm-set-makeup">应用补课</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-dm-clear">↩ 恢复正常排课</button>
+        <button class="btn btn-primary" data-close="modal-day-mode">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右上角上课前 5 分钟 & 待办到点桌面卡片提醒 -->
+  <div class="reminder-popup hidden" id="reminder-popup">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <strong id="rem-title" style="font-size:13px;color:var(--apple-blue);">🔔 上课前提醒</strong>
+      <button class="btn btn-icon" id="btn-rem-close" style="padding:2px 6px;">✕</button>
+    </div>
+    <div id="rem-body" style="font-size:12px;color:var(--text-main);line-height:1.45;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:6px;">
+      <button class="btn btn-primary" id="btn-rem-action" style="padding:3px 10px;font-size:11.5px;">知道了</button>
     </div>
   </div>
 
