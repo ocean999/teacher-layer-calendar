@@ -13,7 +13,7 @@
     <!-- 顶部极简 Apple Liquid Glass 标题栏（图 2 风格：无多余文字，纯日期 + 线性图标） -->
     <header class="topbar">
       <div class="topbar-left">
-        <span class="topbar-date-title" id="topbar-full-date" title="点击回到今天">2026年11月23日 星期一 农历十月十五</span>
+        <span class="topbar-date-title" id="topbar-full-date" title="单击回到今天 · 双击打开中国农历节假日日历">2026年11月23日 星期一 农历十月十五</span>
         <span class="topbar-week-chip" id="topbar-week-chip">第13周</span>
         <span class="topbar-next-pill" id="topbar-next-pill" title="当前或下一节日程实时倒计时">🔔 加载中</span>
       </div>
@@ -25,24 +25,14 @@
           <button class="seg-btn" data-view="month">月</button>
         </div>
 
-        <!-- 🧩 插件图标（图 4 下拉菜单） -->
-        <button class="icon-btn" id="btn-plugin-menu" title="插件与扩展工具">
+        <!-- ⚙ 工具与系统设置（整合原扩展插件、手机连接与 ≡ 主菜单全部功能） -->
+        <button class="icon-btn" id="btn-plugin-menu" title="工具与系统设置">
           <svg viewBox="0 0 24 24"><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/><circle cx="12" cy="12" r="2.5"/></svg>
         </button>
 
-        <!-- 📱 手机连接图标 -->
-        <button class="icon-btn" id="btn-phone-quick" title="手机端同步与局域网连接">
-          <svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><line x1="10.5" y1="18" x2="13.5" y2="18"/></svg>
-        </button>
-
-        <!-- ☁ 坚果云同步纯图标 -->
-        <button class="icon-btn" id="btn-cloud-icon" title="坚果云 WebDAV 自动同步（点击打开账户设置）">
+        <!-- ☁ 坚果云同步与账户设置（合并原云朵与用户账户图标） -->
+        <button class="icon-btn" id="btn-cloud-icon" title="坚果云同步与账户设置">
           <svg viewBox="0 0 24 24"><path d="M17.5 19H7a4.5 4.5 0 0 1-.4-8.98A5.5 5.5 0 0 1 17.3 9.2 4 4 0 0 1 17.5 19Z"/><path d="M9.5 14l2 2 3.5-3.5"/></svg>
-        </button>
-
-        <!-- 👤 账户设置图标 -->
-        <button class="icon-btn" id="btn-account-icon" title="账户设置（坚果云 WebDAV）">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5a7 7 0 0 1 14 0"/></svg>
         </button>
 
         <!-- 🔒 锁定固定防误触 -->
@@ -56,11 +46,6 @@
         </button>
         <button class="icon-btn" id="btn-next" title="下一周期">
           <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
-        </button>
-
-        <!-- ≡ 设置主菜单图标（图 3 下拉菜单） -->
-        <button class="icon-btn" id="btn-main-menu" title="菜单与设置">
-          <svg viewBox="0 0 24 24"><line x1="4" y1="6.5" x2="20" y2="6.5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17.5" x2="20" y2="17.5"/></svg>
         </button>
 
         <!-- ✕ 关闭界面按钮（仅隐藏到右下角托盘继续运行，不退出软件） -->
@@ -456,7 +441,7 @@
         <!-- 设置子页 4：关于与在线检查更新 -->
         <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
           <div class="hint-box">
-            当前版本：<strong id="upd-cur-ver">v1.5.2</strong><br/>
+            当前版本：<strong id="upd-cur-ver">v1.5.3</strong><br/>
             在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
           </div>
           <div class="field">
@@ -530,17 +515,18 @@
         <button class="btn btn-icon" data-close="modal-bell-batch">✕</button>
       </div>
       <div class="modal-body">
-        <!-- AI 一句话识别全天作息 -->
+        <!-- AI 智能识别全天作息 -->
         <div class="wk-ai-box">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:11.5px;font-weight:600;color:var(--apple-indigo);">✨ AI 一句话智能识别作息（自动填入各节课时长、自定义课间与晚自习）</span>
+            <span style="font-size:11.5px;font-weight:600;color:var(--apple-indigo);">✨ AI 智能识别作息（支持直接粘贴学校作息表，或一句话描述起止与课间）</span>
             <div style="display:flex;gap:4px;flex-wrap:wrap;">
               <button class="btn" data-bb-ai-ex="早上8点开始，上午4节每节40分，第1节和第2节之间休10分，第2节和第3节之间休30分，下午1点半开始上4节，晚自习6点半到9点共3节中间休10分" style="padding:2px 7px;font-size:10.5px;">示例1：冬令含大课间</button>
               <button class="btn" data-bb-ai-ex="上午7点50开始4节课每节45分，12节之间休10分，23节之间休25分，下午2点上3节，晚自习18:40到21:10休息10分钟" style="padding:2px 7px;font-size:10.5px;">示例2：夏令作息</button>
+              <button class="btn" data-bb-ai-ex="&quot;第1节&#10;8:00—8:40&quot;&#10;&quot;第2节&#10;8:50—9:30&quot;&#10;9:35—9:40（眼操）&quot;&#10;&quot;课间活动&#10;9:40—10:05&quot;&#10;&quot;第3节&#10;10:05—10:45&quot;&#10;&quot;第4节&#10;10:55—11:35&quot;&#10;&quot;中 餐&#10;11:35&quot;&#10;&quot;午休&#10;11:45—13:20&quot;&#10;&quot;第5节&#10;13:30—14:10&quot;" style="padding:2px 7px;font-size:10.5px;">示例3：粘贴Excel作息表</button>
             </div>
           </div>
           <div style="display:flex;gap:6px;align-items:flex-start;">
-            <textarea class="textarea" id="bb-ai-input" rows="2" placeholder="直接描述作息，如：早上8点开始，第1节和第2节之间休10分，第2节和第3节之间休30分，下午1点半开始，晚自习6点半到9点半休10分" style="background:var(--glass-header);font-size:12px;"></textarea>
+            <textarea class="textarea" id="bb-ai-input" rows="3" placeholder="方式一：直接从 Excel/Word/微信复制学校作息时间表粘贴进来（自动提取上课节次并过滤眼操/课间/用餐）&#10;方式二：用自然语言描述，如：早上8点开始，第1节和第2节之间休10分，下午1点半开始，晚自习7点到9点20休15分" style="background:var(--glass-header);font-size:12px;"></textarea>
             <button class="btn btn-primary" id="btn-bb-ai-parse" style="padding:7px 12px;flex-shrink:0;">⚡ AI 识别排表</button>
           </div>
           <div id="bb-ai-summary" class="hint-box hidden" style="margin:0;padding:5px 9px;font-size:11.5px;"></div>
@@ -632,103 +618,79 @@
     </div>
   </div>
 
-  <!-- 图 4：🧩 插件悬浮菜单 -->
+  <!-- ⚙ 工具与系统设置统一菜单（整合原扩展插件、手机连接与 ≡ 主菜单，按 4 组逻辑重构去重） -->
   <div class="dropdown-menu hidden" id="menu-plugin">
-    <button class="dropdown-item" data-plugin-act="desktop-mgr">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5" style="stroke:var(--apple-blue)"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg></span>
-      <span class="dropdown-item-text">桌面管理</span>
+    <div class="dropdown-section-label">课表与待办</div>
+    <button class="dropdown-item lock-disabled" data-plugin-act="schedule-mgr">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg></span>
+      <span class="dropdown-item-text">课程表管理</span>
     </button>
-    <div class="dropdown-divider"></div>
+    <button class="dropdown-item lock-disabled" data-plugin-act="import">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">导入课表 / 文件</span>
+    </button>
     <button class="dropdown-item lock-disabled" data-plugin-act="new-memo">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg></span>
-      <span class="dropdown-item-text">新建便签</span>
-    </button>
-    <button class="dropdown-item" data-plugin-act="memo-settings">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">便签设置</span>
+      <span class="dropdown-item-text">新建待办便签</span>
     </button>
     <button class="dropdown-item" data-plugin-act="memo-mgr">
       <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">便签管理</span>
+      <span class="dropdown-item-text">便签与待办管理</span>
     </button>
-    <div class="dropdown-divider"></div>
-    <button class="dropdown-item lock-disabled" data-plugin-act="new-schedule">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/></svg></span>
-      <span class="dropdown-item-text">新建课程表</span>
-    </button>
-    <button class="dropdown-item lock-disabled" data-plugin-act="schedule-mgr">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">课程表管理</span>
-    </button>
-    <div class="dropdown-divider"></div>
     <button class="dropdown-item" data-plugin-act="weekly-report">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8"/><path d="M8 14h5"/></svg></span>
       <span class="dropdown-item-text">自动生成周报</span>
     </button>
-  </div>
-
-  <!-- 图 3：≡ 主设置悬浮菜单 -->
-  <div class="dropdown-menu hidden" id="menu-main">
-    <button class="dropdown-item" data-main-act="search">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span>
-      <span class="dropdown-item-text">内容搜索</span>
-    </button>
-    <button class="dropdown-item" data-main-act="pick-date">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">选择日期</span>
-    </button>
-    <button class="dropdown-item" data-main-act="theme">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"/></svg></span>
-      <span class="dropdown-item-text">主题皮肤</span>
-    </button>
     <div class="dropdown-divider"></div>
-    <button class="dropdown-item" data-main-act="resize-unlock">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></span>
-      <span class="dropdown-item-text">调整位置和大小</span>
+    <div class="dropdown-section-label">查找与视图</div>
+    <button class="dropdown-item" data-plugin-act="search">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span>
+      <span class="dropdown-item-text">内容搜索 / 跳转日期</span>
     </button>
-    <button class="dropdown-item" data-main-act="hide-window">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">隐藏日历清单</span>
+    <button class="dropdown-item" data-plugin-act="theme">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"/></svg></span>
+      <span class="dropdown-item-text">主题皮肤与透明度</span>
     </button>
-    <button class="dropdown-item" data-main-act="privacy-mask">
+    <button class="dropdown-item" data-plugin-act="privacy-mask">
       <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">隐藏日历内容</span>
+      <span class="dropdown-item-text">隐私保护 · 隐藏内容</span>
       <span class="dropdown-item-trailing" id="menu-privacy-flag">🔓</span>
     </button>
-    <button class="dropdown-item" data-main-act="export">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">导出</span>
-    </button>
-    <button class="dropdown-item lock-disabled" data-main-act="import">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">导入</span>
-    </button>
-    <button class="dropdown-item" data-main-act="print">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">打印</span>
+    <button class="dropdown-item" data-plugin-act="resize-unlock">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></span>
+      <span class="dropdown-item-text">解锁窗口位置与大小</span>
     </button>
     <div class="dropdown-divider"></div>
-    <button class="dropdown-item" data-main-act="cal-settings">
+    <div class="dropdown-section-label">多端与数据</div>
+    <button class="dropdown-item" data-plugin-act="phone-lan">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><line x1="10.5" y1="18" x2="13.5" y2="18"/></svg></span>
+      <span class="dropdown-item-text">手机连接与局域网同步</span>
+    </button>
+    <button class="dropdown-item" data-plugin-act="export">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">导出 JSON 备份</span>
+    </button>
+    <button class="dropdown-item" data-plugin-act="print">
+      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-text">打印课表</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <div class="dropdown-section-label">系统与关于</div>
+    <button class="dropdown-item" data-plugin-act="cal-settings">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="15" cy="14" r="2.5" style="stroke:var(--apple-blue)"/></svg></span>
-      <span class="dropdown-item-text">日历设置</span>
+      <span class="dropdown-item-text">日历与桌面设置</span>
     </button>
-    <button class="dropdown-item" data-main-act="account-settings">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5 17a4 4 0 0 1 8 0"/><circle cx="17" cy="13" r="2" style="stroke:var(--apple-blue)"/></svg></span>
-      <span class="dropdown-item-text">账户设置</span>
-    </button>
-    <div class="dropdown-divider"></div>
-    <button class="dropdown-item" data-main-act="features">
+    <button class="dropdown-item" data-plugin-act="features">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.5 1 1.3 1 2.3h6c0-1 .3-1.8 1-2.3A7 7 0 0 0 12 2Z"/></svg></span>
       <span class="dropdown-item-text">功能介绍</span>
     </button>
-    <button class="dropdown-item" data-main-act="about-update">
+    <button class="dropdown-item" data-plugin-act="about-update">
       <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">关于与检查更新</span>
+      <span class="dropdown-item-text">关于与在线检查更新</span>
     </button>
-    <div class="dropdown-divider"></div>
-    <button class="dropdown-item" data-main-act="quit">
+    <button class="dropdown-item" data-plugin-act="hide-window">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></span>
-      <span class="dropdown-item-text">关闭界面（隐藏到托盘）</span>
+      <span class="dropdown-item-text">隐藏到托盘</span>
     </button>
   </div>
 
@@ -892,6 +854,41 @@
       <div class="modal-footer">
         <button class="btn" id="btn-dm-clear">↩ 恢复正常排课</button>
         <button class="btn btn-primary" data-close="modal-day-mode">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 14：双击顶栏日期 -> 中国农历与法定节假日日历 -->
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-cn-cal">
+    <div class="modal" style="max-width:500px;">
+      <div class="modal-header">
+        <span>📅 中国农历与法定节假日日历</span>
+        <button class="btn btn-icon" data-close="modal-cn-cal">✕</button>
+      </div>
+      <div class="modal-body" style="gap:10px;">
+        <div class="cn-cal-nav">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <button class="btn" id="btn-cncal-prev" style="padding:4px 9px;">◀ 上月</button>
+            <select class="select" id="cncal-year" style="width:86px;padding:4px 6px;"></select>
+            <select class="select" id="cncal-month" style="width:74px;padding:4px 6px;"></select>
+            <button class="btn" id="btn-cncal-next" style="padding:4px 9px;">下月 ▶</button>
+          </div>
+          <button class="btn btn-primary" id="btn-cncal-today" style="padding:4px 10px;">回到今天</button>
+        </div>
+        <div class="cn-cal-legend">
+          <span class="cn-leg-item"><span class="cn-leg-dot" style="background:rgba(255,59,48,0.22);border:1px solid #FF3B30;"></span>法定节假日 (休)</span>
+          <span class="cn-leg-item"><span class="cn-leg-dot" style="background:rgba(255,149,0,0.22);border:1px solid #FF9500;"></span>调休补班 (班)</span>
+          <span class="cn-leg-item"><span class="cn-leg-dot" style="background:rgba(88,86,214,0.18);border:1px solid #5856D6;"></span>周末（周六/日）</span>
+          <span class="cn-leg-item"><span class="cn-leg-dot" style="border:2px solid var(--apple-blue);"></span>今日</span>
+        </div>
+        <div class="cn-cal-wk-hdr">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span class="wk-end">六</span><span class="wk-end">日</span>
+        </div>
+        <div class="cn-cal-grid" id="cncal-grid"></div>
+      </div>
+      <div class="modal-footer">
+        <span style="font-size:11.5px;color:var(--text-muted);">点击任意日期即可跳转主界面到该周 · 右上角带「休 / 班」角标</span>
+        <button class="btn" data-close="modal-cn-cal">关闭</button>
       </div>
     </div>
   </div>

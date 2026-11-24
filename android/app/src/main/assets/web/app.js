@@ -24,19 +24,98 @@
   let savedPersonalLayers = { showCourse: true, showWork: true };
   const darkMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
-  function formatLunarText(d) {
+  function getLunarParts(d) {
     try {
       const parts = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'numeric', day: 'numeric' }).formatToParts(d);
       const mVal = parseInt(parts.find(p => p.type === 'month')?.value || '0', 10);
       const dVal = parseInt(parts.find(p => p.type === 'day')?.value || '0', 10);
       const isLeap = parts.some(p => p.type === 'month' && /闰/.test(p.value));
       if (mVal >= 1 && mVal <= 12 && dVal >= 1 && dVal <= 30) {
-        return `农历${isLeap ? '闰' : ''}${LUNAR_MONTHS[mVal]}${LUNAR_DAYS[dVal]}`;
+        return {
+          m: mVal, d: dVal, isLeap,
+          full: `农历${isLeap ? '闰' : ''}${LUNAR_MONTHS[mVal]}${LUNAR_DAYS[dVal]}`,
+          short: dVal === 1 ? `${isLeap ? '闰' : ''}${LUNAR_MONTHS[mVal]}` : LUNAR_DAYS[dVal],
+        };
       }
+      return null;
+    } catch { return null; }
+  }
+
+  function formatLunarText(d) {
+    const p = getLunarParts(d);
+    if (p) return p.full;
+    try {
       return '农历' + new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'long', day: 'numeric' }).format(d);
     } catch {
       return '';
     }
+  }
+
+  const CN_STATUTORY_MAP = {
+    '2025-01-01': { type: 'rest', name: '元旦' },
+    '2025-01-26': { type: 'work', name: '补班' },
+    '2025-01-28': { type: 'rest', name: '除夕' }, '2025-01-29': { type: 'rest', name: '春节' }, '2025-01-30': { type: 'rest', name: '初二' }, '2025-01-31': { type: 'rest', name: '初三' },
+    '2025-02-01': { type: 'rest', name: '初四' }, '2025-02-02': { type: 'rest', name: '初五' }, '2025-02-03': { type: 'rest', name: '初六' }, '2025-02-04': { type: 'rest', name: '初七' },
+    '2025-02-08': { type: 'work', name: '补班' },
+    '2025-04-04': { type: 'rest', name: '清明' }, '2025-04-05': { type: 'rest', name: '清明休' }, '2025-04-06': { type: 'rest', name: '清明休' },
+    '2025-04-27': { type: 'work', name: '补班' },
+    '2025-05-01': { type: 'rest', name: '劳动节' }, '2025-05-02': { type: 'rest', name: '五一休' }, '2025-05-03': { type: 'rest', name: '五一休' }, '2025-05-04': { type: 'rest', name: '五一休' }, '2025-05-05': { type: 'rest', name: '五一休' },
+    '2025-05-31': { type: 'rest', name: '端午' }, '2025-06-01': { type: 'rest', name: '端午休' }, '2025-06-02': { type: 'rest', name: '端午休' },
+    '2025-09-28': { type: 'work', name: '补班' },
+    '2025-10-01': { type: 'rest', name: '国庆节' }, '2025-10-02': { type: 'rest', name: '国庆休' }, '2025-10-03': { type: 'rest', name: '国庆休' }, '2025-10-04': { type: 'rest', name: '国庆休' },
+    '2025-10-05': { type: 'rest', name: '国庆休' }, '2025-10-06': { type: 'rest', name: '中秋' }, '2025-10-07': { type: 'rest', name: '国庆休' }, '2025-10-08': { type: 'rest', name: '国庆休' },
+    '2025-10-11': { type: 'work', name: '补班' },
+    '2026-01-01': { type: 'rest', name: '元旦' }, '2026-01-02': { type: 'rest', name: '元旦休' }, '2026-01-03': { type: 'rest', name: '元旦休' }, '2026-01-04': { type: 'work', name: '补班' },
+    '2026-02-14': { type: 'work', name: '补班' },
+    '2026-02-15': { type: 'rest', name: '春假' }, '2026-02-16': { type: 'rest', name: '除夕' }, '2026-02-17': { type: 'rest', name: '春节' }, '2026-02-18': { type: 'rest', name: '初二' },
+    '2026-02-19': { type: 'rest', name: '初三' }, '2026-02-20': { type: 'rest', name: '初四' }, '2026-02-21': { type: 'rest', name: '初五' }, '2026-02-22': { type: 'rest', name: '初六' }, '2026-02-23': { type: 'rest', name: '初七' },
+    '2026-02-28': { type: 'work', name: '补班' },
+    '2026-04-04': { type: 'rest', name: '清明休' }, '2026-04-05': { type: 'rest', name: '清明' }, '2026-04-06': { type: 'rest', name: '清明休' },
+    '2026-05-01': { type: 'rest', name: '劳动节' }, '2026-05-02': { type: 'rest', name: '五一休' }, '2026-05-03': { type: 'rest', name: '五一休' }, '2026-05-04': { type: 'rest', name: '五一休' }, '2026-05-05': { type: 'rest', name: '五一休' },
+    '2026-05-09': { type: 'work', name: '补班' },
+    '2026-06-19': { type: 'rest', name: '端午' }, '2026-06-20': { type: 'rest', name: '端午休' }, '2026-06-21': { type: 'rest', name: '端午休' },
+    '2026-09-20': { type: 'work', name: '补班' },
+    '2026-09-25': { type: 'rest', name: '中秋' }, '2026-09-26': { type: 'rest', name: '中秋休' }, '2026-09-27': { type: 'rest', name: '中秋休' },
+    '2026-10-01': { type: 'rest', name: '国庆节' }, '2026-10-02': { type: 'rest', name: '国庆休' }, '2026-10-03': { type: 'rest', name: '国庆休' }, '2026-10-04': { type: 'rest', name: '国庆休' },
+    '2026-10-05': { type: 'rest', name: '国庆休' }, '2026-10-06': { type: 'rest', name: '国庆休' }, '2026-10-07': { type: 'rest', name: '国庆休' },
+    '2026-10-10': { type: 'work', name: '补班' },
+    '2027-01-01': { type: 'rest', name: '元旦' }, '2027-01-02': { type: 'rest', name: '元旦休' }, '2027-01-03': { type: 'rest', name: '元旦休' },
+    '2027-02-05': { type: 'rest', name: '除夕' }, '2027-02-06': { type: 'rest', name: '春节' }, '2027-02-07': { type: 'rest', name: '初二' }, '2027-02-08': { type: 'rest', name: '初三' },
+    '2027-02-09': { type: 'rest', name: '初四' }, '2027-02-10': { type: 'rest', name: '初五' }, '2027-02-11': { type: 'rest', name: '初六' },
+    '2027-04-05': { type: 'rest', name: '清明' },
+    '2027-05-01': { type: 'rest', name: '劳动节' }, '2027-05-02': { type: 'rest', name: '五一休' }, '2027-05-03': { type: 'rest', name: '五一休' }, '2027-05-04': { type: 'rest', name: '五一休' }, '2027-05-05': { type: 'rest', name: '五一休' },
+    '2027-06-09': { type: 'rest', name: '端午' },
+    '2027-09-15': { type: 'rest', name: '中秋' },
+    '2027-10-01': { type: 'rest', name: '国庆节' }, '2027-10-02': { type: 'rest', name: '国庆休' }, '2027-10-03': { type: 'rest', name: '国庆休' }, '2027-10-04': { type: 'rest', name: '国庆休' },
+    '2027-10-05': { type: 'rest', name: '国庆休' }, '2027-10-06': { type: 'rest', name: '国庆休' }, '2027-10-07': { type: 'rest', name: '国庆休' },
+  };
+
+  function getCnCalendarMeta(d) {
+    const ds = fmtDate(d);
+    const md = ds.slice(5);
+    const lp = getLunarParts(d);
+    const tomLp = getLunarParts(addDays(d, 1));
+    const solarFest = { '01-01': '元旦', '05-01': '劳动节', '06-01': '儿童节', '09-10': '教师节', '10-01': '国庆节' }[md]
+      || ((d.getMonth() === 3 && d.getDate() === 5) ? '清明' : '');
+    let lunarFest = '';
+    if (lp && !lp.isLeap) {
+      if (tomLp && !tomLp.isLeap && tomLp.m === 1 && tomLp.d === 1) lunarFest = '除夕';
+      else lunarFest = ({ '1-1': '春节', '1-15': '元宵', '5-5': '端午', '7-7': '七夕', '8-15': '中秋', '9-9': '重阳', '12-8': '腊八' })[`${lp.m}-${lp.d}`] || '';
+    }
+    const dayOv = appState?.data?.dayOverrides && appState.data.dayOverrides[ds];
+    const stat = CN_STATUTORY_MAP[ds];
+    let tagType = null, festLabel = '';
+    if (dayOv) {
+      tagType = dayOv.type === 'holiday' ? 'rest' : 'work';
+      festLabel = dayOv.label || (tagType === 'rest' ? '放假' : '补课');
+    } else if (stat) {
+      tagType = stat.type;
+      festLabel = stat.name;
+    }
+    const subText = festLabel && festLabel !== '补班'
+      ? festLabel
+      : (lunarFest || solarFest || (lp ? lp.short : ''));
+    return { ds, tagType, festLabel, subText, isFest: !!(festLabel || lunarFest || solarFest), isWeekend: d.getDay() === 0 || d.getDay() === 6 };
   }
 
   function updateTopbarDateLabel() {
@@ -490,6 +569,14 @@
     return `background-color:${hex};color:${txt};border-color:rgba(15,23,42,0.22);`;
   }
 
+  function fmtCountdownMin(mins) {
+    const m = Math.max(0, Math.round(mins));
+    if (m < 60) return `${m}分`;
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    return r ? `${h}小时${r}分` : `${h}小时`;
+  }
+
   function renderNextCountdown() {
     const pill = document.getElementById('topbar-next-pill');
     if (!pill || !appState) return;
@@ -506,12 +593,12 @@
     const cur = items.find(it => nowMin >= it.s && nowMin < it.e);
     if (cur) {
       pill.classList.add('ongoing');
-      pill.textContent = `🟢 进行中：${cur.label} · 剩${cur.e - nowMin}分`;
+      pill.textContent = `🟢 进行中：${cur.label} · 剩${fmtCountdownMin(cur.e - nowMin)}`;
       return;
     }
     const next = items.find(it => it.s > nowMin);
     pill.classList.remove('ongoing');
-    pill.textContent = next ? `🔔 距 ${next.label} 还有${next.s - nowMin}分` : '✅ 今日后续无日程';
+    pill.textContent = next ? `🔔 距 ${next.label} 还有${fmtCountdownMin(next.s - nowMin)}` : '✅ 今日后续无日程';
   }
 
   function render() {
@@ -656,7 +743,7 @@
           const s = toMin(c.start), e = toMin(c.end);
           if (e <= range.start || s >= range.end) return;
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
-          const height = Math.max(24, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
+          const height = Math.max(28, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
           const isMine = /历史|道法|地理|班会|（张）|\(张\)/.test(c.title);
           colInner += `
             <div class="course-block course-${c.color} ${isMine ? 'my-class-highlight' : ''}" style="top:${top}px;height:${height}px;opacity:0.94;${courseCustomStyle(c.customBg)}"
@@ -669,7 +756,7 @@
                 ${isMine ? '<span title="我任教的课">★</span>' : ''}
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.title)}</span>
               </div>
-              ${height >= 34 ? `<div class="course-time">${c.start}-${c.end}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>` : ''}
+              ${height >= 26 ? `<div class="course-time">${c.start}-${c.end}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>` : ''}
             </div>`;
         });
         return `<div class="day-col ${isTd ? 'today-col' : ''}" data-col-date="${ds}" style="height:${canvasHeight}px">${colInner}</div>`;
@@ -691,19 +778,19 @@
           const s = toMin(c.start), e = toMin(c.end);
           if (e <= range.start || s >= range.end) return;
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
-          const height = Math.max(24, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
+          const height = Math.max(28, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
           colInner += `
             <div class="course-block course-${c.color}" style="top:${top}px;height:${height}px;opacity:${opCourse};${courseCustomStyle(c.customBg)}"
                  data-course-source="my"
                  data-course-id="${c.courseId}" data-orig-date="${c.origDate}" data-orig-start="${c.origStart}" data-orig-end="${c.origEnd}"
                  data-cur-date="${c.date}" data-cur-start="${c.start}" data-cur-end="${c.end}"
                  data-cur-title="${escapeAttr(c.title)}" data-cur-note="${escapeAttr(c.note)}" data-override-id="${c.overrideId || ''}"
-                 title="按住拖动可磁吸跳过课间单次调课，点击可设置背景色或调课">
+                 title="按住拖动可磁吸跳过课间单次调课或互换，点击可设置背景色">
               <div class="course-title">
                 ${c.isMoved ? '<span class="badge-moved">调</span>' : ''}
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.title)}</span>
               </div>
-              ${height >= 34 ? `<div class="course-time">${c.start}-${c.end}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>` : ''}
+              ${height >= 26 ? `<div class="course-time">${c.start}-${c.end}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>` : ''}
             </div>`;
         });
       }
@@ -713,7 +800,7 @@
           const s = toMin(w.start), e = toMin(w.end);
           if (e <= range.start || s >= range.end) return;
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
-          const height = Math.max(24, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
+          const height = Math.max(28, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
           const isOverlap = showCourse && activeList.some(c => Math.max(s, toMin(c.start)) < Math.min(e, toMin(c.end)));
           const cls = ['work-block'];
           if (w.urgent) cls.push('urgent');
@@ -725,7 +812,7 @@
                 <span class="work-check" data-toggle-done="${w.id}">${w.done ? '☑' : '☐'}</span>
                 <span class="work-title-text">${isOverlap ? '⚡ ' : ''}${escapeHtml(w.title)}</span>
               </div>
-              ${height >= 34 ? `<div class="work-time">${w.start}-${w.end}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>` : ''}
+              ${height >= 26 ? `<div class="work-time">${w.start}-${w.end}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>` : ''}
               <div class="work-resize-handle" data-resize-work="${w.id}" title="上下拖拉调整时长"></div>
             </div>`;
         });
@@ -1440,7 +1527,7 @@
     const uCfg = appState.config.updater || {};
     const res = await window.SyncBridge.checkUpdate(uCfg);
     latestUpdateInfo = res;
-    const menuBtn = document.getElementById('btn-main-menu');
+    const menuBtn = document.getElementById('btn-plugin-menu');
     if (menuBtn) {
       menuBtn.classList.toggle('has-update-dot', !!(res.ok && res.hasUpdate));
     }
@@ -1452,10 +1539,9 @@
     renderUpdateStatusBox(res);
   }
 
-  // ===== 图 3 / 图 4 菜单支撑功能：搜索、便签管理、AI 排程、自动周报 =====
+  // ===== 菜单支撑功能：搜索、便签管理、AI 排程、自动周报 =====
   function closeAllMenus() {
     document.getElementById('menu-plugin')?.classList.add('hidden');
-    document.getElementById('menu-main')?.classList.add('hidden');
   }
 
   function toggleDropdownMenu(menuId, anchorEl) {
@@ -1745,9 +1831,114 @@
     return h * 60 + min;
   }
 
+  function extractDirectPeriodsFromText(txt) {
+    const lines = String(txt || '').replace(/\r/g, '').split('\n');
+    const rangeRe = /(\d{1,2})\s*[:：]\s*(\d{2})\s*[-~—–－至到]+\s*(\d{1,2})\s*[:：]\s*(\d{2})/;
+    const extracted = [];
+    let pendingLabel = '';
+    let isPmHint = false;
+    let isEvHint = false;
+    let lastStartMin = 0;
+
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/["""]/g, '').replace(/\t+/g, ' ').trim();
+      if (!line) continue;
+      if (/下午|午后|午休|中\s*餐|午\s*餐/.test(line)) { isPmHint = true; isEvHint = false; }
+      if (/晚上|晚自习|晚读/.test(line)) { isEvHint = true; isPmHint = false; }
+      if (/早上|上午|早晨|早读/.test(line)) { isPmHint = false; isEvHint = false; }
+
+      const rm = line.match(rangeRe);
+      if (!rm) {
+        if (/\d{1,2}\s*[:：]\s*\d{2}/.test(line)) pendingLabel = '';
+        else if (line.length <= 28) pendingLabel = line;
+        continue;
+      }
+
+      const inlineExtra = line.replace(rm[0], ' ').replace(/^[\s（(【［:：,，;；]+|[\s）)】］:：,，;；]+$/g, '').trim();
+      const rowLabel = inlineExtra || pendingLabel || '';
+      pendingLabel = '';
+
+      let sh = Number(rm[1]), sm = Number(rm[2]), eh = Number(rm[3]), em = Number(rm[4]);
+      if ((isEvHint || /晚/.test(rowLabel)) && sh >= 1 && sh <= 11) {
+        sh += 12;
+        if (eh >= 1 && eh <= 11) eh += 12;
+      } else if ((isPmHint || lastStartMin >= 660) && sh >= 1 && sh <= 7) {
+        sh += 12;
+        if (eh >= 1 && eh <= 7) eh += 12;
+      }
+      if (eh < sh) eh += 12;
+
+      const sMin = sh * 60 + sm;
+      const eMin = eh * 60 + em;
+      const dur = eMin - sMin;
+      if (dur <= 0 || dur > 240) continue;
+
+      const isTeachingKw = /(第?\s*[一二三四五六七八九十\d]{1,2}\s*节|早读|早自习|晚读|晚自习|自习|辅导)/.test(rowLabel);
+      const isSkipKw = /(眼操|眼保健操|课间|大课间|小课间|跑操|广播操|早操|体锻|阳光体育|升旗|晨会|中\s*餐|午\s*餐|午\s*饭|早\s*餐|早\s*饭|午\s*休|午\s*睡|晚\s*餐|晚\s*饭|就餐|吃饭|放学|离校|静校|休息|预备)/.test(rowLabel);
+      if (isSkipKw && !isTeachingKw) {
+        lastStartMin = Math.max(lastStartMin, sMin);
+        continue;
+      }
+      if (dur < 15 && !isTeachingKw) {
+        lastStartMin = Math.max(lastStartMin, sMin);
+        continue;
+      }
+
+      lastStartMin = Math.max(lastStartMin, sMin);
+      let label = '';
+      const secM = rowLabel.match(/第?\s*([一二三四五六七八九十\d]{1,2})\s*节/);
+      if (/早读|早自习/.test(rowLabel)) label = '早读';
+      else if (/晚自习/.test(rowLabel)) label = rowLabel.replace(/\s+/g, '');
+      else if (secM) label = `第${cnNumToInt(secM[1])}节`;
+      else label = rowLabel ? rowLabel.slice(0, 8) : '';
+
+      extracted.push({ label, start: fromMin(sMin), end: fromMin(eMin), sMin, eMin });
+    }
+
+    const uniq = [];
+    const seen = new Set();
+    extracted.sort((a, b) => a.sMin - b.sMin).forEach((p) => {
+      const key = `${p.start}-${p.end}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const fallbackLabel = p.sMin >= 1080 ? `晚自习${uniq.filter(x => x.sMin >= 1080).length + 1}` : `第${uniq.length + 1}节`;
+      uniq.push({ num: uniq.length + 1, label: p.label || fallbackLabel, start: p.start, end: p.end, sMin: p.sMin, eMin: p.eMin });
+    });
+    return uniq;
+  }
+
   function parseBellScheduleText(raw) {
     const txt = String(raw || '').trim();
     if (!txt) return null;
+
+    // 优先提取直接粘贴的多行 Excel/Word 作息时间表
+    const direct = extractDirectPeriodsFromText(txt);
+    if (direct.length >= 2) {
+      const am = direct.filter(p => p.sMin < 750);
+      const pm = direct.filter(p => p.sMin >= 750 && p.sMin < 1080);
+      const ev = direct.filter(p => p.sMin >= 1080);
+      const durs = direct.map(p => p.eMin - p.sMin);
+      const avgDur = Math.round(durs.reduce((a, b) => a + b, 0) / durs.length);
+      const smallGaps = [];
+      for (let i = 0; i < direct.length - 1; i++) {
+        const g = direct[i + 1].sMin - direct[i].eMin;
+        if (g >= 0 && g <= 25) smallGaps.push(g);
+      }
+      return {
+        directPeriods: direct.map(({ num, label, start, end }) => ({ num, label, start, end })),
+        customGaps: {},
+        classDur: avgDur,
+        breakDur: smallGaps.length ? smallGaps[0] : 10,
+        amStart: am.length ? am[0].start : undefined,
+        amCount: am.length,
+        pmStart: pm.length ? pm[0].start : undefined,
+        pmCount: pm.length,
+        evStart: ev.length ? ev[0].start : undefined,
+        evCount: ev.length,
+        notes: [`已直接提取 ${direct.length} 个上课节次（${direct[0].start}~${direct[direct.length - 1].end}）`],
+      };
+    }
+
     const res = { customGaps: {}, notes: [] };
 
     const durM = txt.match(/每节(?:课)?(?:时长)?\s*(\d{2,3})\s*分|(\d{2,3})\s*分钟?\s*(?:一|每)节/);
@@ -2061,24 +2252,97 @@
       anchorDate = currentView === 'day' ? addDays(anchorDate, 1) : currentView === 'week' ? addDays(anchorDate, 7) : new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 1);
       render();
     });
-    document.getElementById('topbar-full-date').addEventListener('click', () => {
-      anchorDate = new Date();
-      render();
-      showToast('已回到今天');
+    let topDateClickTimer = null;
+    const topFullDateEl = document.getElementById('topbar-full-date');
+    topFullDateEl.addEventListener('click', () => {
+      if (topDateClickTimer) clearTimeout(topDateClickTimer);
+      topDateClickTimer = setTimeout(() => {
+        topDateClickTimer = null;
+        anchorDate = new Date();
+        render();
+        showToast('已回到今天（双击日期可打开中国农历与节假日日历）');
+      }, 230);
     });
 
-    // 顶部极简图标区：插件(图4)、手机、云同步、账户、主菜单(图3)
+    let cnCalYear = anchorDate.getFullYear(), cnCalMonth = anchorDate.getMonth();
+    function initCnCalSelects() {
+      const ySel = document.getElementById('cncal-year');
+      const mSel = document.getElementById('cncal-month');
+      if (!ySel || !mSel || ySel.options.length) return;
+      for (let y = 2024; y <= 2028; y++) ySel.add(new Option(`${y}年`, String(y)));
+      for (let m = 0; m < 12; m++) mSel.add(new Option(`${m + 1}月`, String(m)));
+      ySel.addEventListener('change', () => { cnCalYear = Number(ySel.value); renderCnCalendar(); });
+      mSel.addEventListener('change', () => { cnCalMonth = Number(mSel.value); renderCnCalendar(); });
+      document.getElementById('btn-cncal-prev').addEventListener('click', () => {
+        cnCalMonth -= 1;
+        if (cnCalMonth < 0) { cnCalMonth = 11; cnCalYear -= 1; }
+        renderCnCalendar();
+      });
+      document.getElementById('btn-cncal-next').addEventListener('click', () => {
+        cnCalMonth += 1;
+        if (cnCalMonth > 11) { cnCalMonth = 0; cnCalYear += 1; }
+        renderCnCalendar();
+      });
+      document.getElementById('btn-cncal-today').addEventListener('click', () => {
+        const now = new Date();
+        cnCalYear = now.getFullYear();
+        cnCalMonth = now.getMonth();
+        renderCnCalendar();
+      });
+    }
+    function renderCnCalendar() {
+      initCnCalSelects();
+      document.getElementById('cncal-year').value = String(cnCalYear);
+      document.getElementById('cncal-month').value = String(cnCalMonth);
+      const first = new Date(cnCalYear, cnCalMonth, 1);
+      const startOffset = (first.getDay() + 6) % 7;
+      const gridStart = addDays(first, -startOffset);
+      const todayStr = fmtDate(new Date());
+      const gridEl = document.getElementById('cncal-grid');
+      let html = '';
+      for (let i = 0; i < 42; i++) {
+        const d = addDays(gridStart, i);
+        const meta = getCnCalendarMeta(d);
+        const cls = ['cn-cell'];
+        if (d.getMonth() !== cnCalMonth) cls.push('other-m');
+        if (meta.ds === todayStr) cls.push('is-today');
+        if (meta.tagType === 'rest') cls.push('is-holiday');
+        else if (meta.tagType === 'work') cls.push('is-workday');
+        else if (meta.isWeekend) cls.push('is-weekend');
+        const badge = meta.tagType === 'rest'
+          ? '<span class="cn-tag rest">休</span>'
+          : (meta.tagType === 'work' ? '<span class="cn-tag work">班</span>' : '');
+        html += `
+          <div class="${cls.join(' ')}" data-cncal-jump="${meta.ds}" title="${meta.ds} ${getLunarParts(d)?.full || ''}${meta.festLabel ? ' · ' + meta.festLabel : ''}">
+            ${badge}
+            <div class="cn-solar">${d.getDate()}</div>
+            <div class="cn-lunar ${meta.isFest ? 'is-fest' : ''}">${escapeHtml(meta.subText)}</div>
+          </div>`;
+      }
+      gridEl.innerHTML = html;
+      gridEl.querySelectorAll('[data-cncal-jump]').forEach(cell => cell.addEventListener('click', () => {
+        anchorDate = parseDate(cell.dataset.cncalJump);
+        closeModal('modal-cn-cal');
+        render();
+        showToast(`已跳转至 ${anchorDate.getFullYear()}年${anchorDate.getMonth() + 1}月${anchorDate.getDate()}日（${formatLunarText(anchorDate)}）`);
+      }));
+    }
+    topFullDateEl.addEventListener('dblclick', () => {
+      if (topDateClickTimer) { clearTimeout(topDateClickTimer); topDateClickTimer = null; }
+      cnCalYear = anchorDate.getFullYear();
+      cnCalMonth = anchorDate.getMonth();
+      const calBox = document.querySelector('#modal-cn-cal .modal');
+      if (calBox) { calBox.style.transform = ''; calBox.dataset.dragOx = '0'; calBox.dataset.dragOy = '0'; }
+      renderCnCalendar();
+      openModal('modal-cn-cal');
+    });
+
+    // 顶部极简图标区：统一齿轮菜单（整合插件/手机/主菜单） + 合并后的云同步与账户图标
     document.getElementById('btn-plugin-menu').addEventListener('click', (e) => {
       e.stopPropagation();
       toggleDropdownMenu('menu-plugin', e.currentTarget);
     });
-    document.getElementById('btn-main-menu').addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleDropdownMenu('menu-main', e.currentTarget);
-    });
-    document.getElementById('btn-phone-quick').addEventListener('click', () => openSettingsModal('desktop'));
     document.getElementById('btn-cloud-icon').addEventListener('click', () => openSettingsModal('sync'));
-    document.getElementById('btn-account-icon').addEventListener('click', () => openSettingsModal('sync'));
     const closeWinBtn = document.getElementById('btn-close-window');
     if (closeWinBtn) {
       closeWinBtn.addEventListener('click', async () => {
@@ -2102,7 +2366,7 @@
       });
     }
     document.addEventListener('click', (e) => {
-      if (!e.target.closest('.dropdown-menu') && !e.target.closest('#btn-plugin-menu') && !e.target.closest('#btn-main-menu')) {
+      if (!e.target.closest('.dropdown-menu') && !e.target.closest('#btn-plugin-menu')) {
         closeAllMenus();
       }
     });
@@ -2114,43 +2378,37 @@
       setTimeout(() => document.getElementById('ai-nl-input')?.focus(), 40);
     });
 
-    // 图 4：插件下拉菜单动作绑定
+    // ⚙ 统一菜单动作绑定（整合课表与待办 / 查找与视图 / 多端与数据 / 系统与关于）
     document.querySelectorAll('[data-plugin-act]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const act = btn.dataset.pluginAct;
         closeAllMenus();
-        if (act === 'desktop-mgr') openSettingsModal('desktop');
-        else if (act === 'new-memo') {
-          if (appState.config.ui.homeroomMode) await setHomeroomMode(false);
-          openWorkModal(null);
-        } else if (act === 'memo-settings') {
-          if (appState.config.ui.homeroomMode) await setHomeroomMode(false);
-          openSettingsModal('theme');
-        } else if (act === 'memo-mgr') {
-          renderMemoMgrList();
-          openModal('modal-memo-mgr');
-        } else if (act === 'new-schedule') {
-          openSmartImportModal(appState.config.ui.homeroomMode ? 'class' : 'my');
-        } else if (act === 'schedule-mgr') {
+        if (act === 'schedule-mgr') {
           activeTtTab = appState.config.ui.homeroomMode ? 'class' : 'my';
           renderTimetableManager();
           openModal('modal-timetable');
+        } else if (act === 'import') {
+          openSmartImportModal(appState.config.ui.homeroomMode ? 'class' : 'my');
+        } else if (act === 'new-memo') {
+          if (appState.config.ui.homeroomMode) await setHomeroomMode(false);
+          openWorkModal(null);
+        } else if (act === 'memo-mgr') {
+          renderMemoMgrList();
+          openModal('modal-memo-mgr');
         } else if (act === 'weekly-report') {
           document.getElementById('wr-content').value = generateWeeklyReportText();
           openModal('modal-weekly-report');
-        }
-      });
-    });
-
-    // 图 3：设置主菜单动作绑定
-    document.querySelectorAll('[data-main-act]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const act = btn.dataset.mainAct;
-        closeAllMenus();
-        if (act === 'search') openSearchModal(false);
-        else if (act === 'pick-date') openSearchModal(true);
-        else if (act === 'theme') openSettingsModal('theme');
-        else if (act === 'resize-unlock') {
+        } else if (act === 'search') {
+          openSearchModal(false);
+        } else if (act === 'theme') {
+          openSettingsModal('theme');
+        } else if (act === 'privacy-mask') {
+          isPrivacyMasked = !isPrivacyMasked;
+          document.body.classList.toggle('privacy-masked', isPrivacyMasked);
+          const pf = document.getElementById('menu-privacy-flag');
+          if (pf) pf.textContent = isPrivacyMasked ? '🔒' : '🔓';
+          showToast(isPrivacyMasked ? '🔒 已开启隐私保护：日历内容已模糊隐藏' : '🔓 已恢复显示日历内容');
+        } else if (act === 'resize-unlock') {
           if (isUiLocked) {
             applyLockUi(false);
             appState.config.ui.locked = false;
@@ -2158,28 +2416,20 @@
             await persistAndScheduleSync(false);
           }
           showToast('已解锁，可拖动顶部移动窗口、拖动四边任意调整长宽高');
-        } else if (act === 'hide-window') {
-          await window.SyncBridge.windowAction('hide');
-        } else if (act === 'privacy-mask') {
-          isPrivacyMasked = !isPrivacyMasked;
-          document.body.classList.toggle('privacy-masked', isPrivacyMasked);
-          document.getElementById('menu-privacy-flag').textContent = isPrivacyMasked ? '🔒' : '🔓';
-          showToast(isPrivacyMasked ? '🔒 已开启隐私保护：日历内容已模糊隐藏' : '🔓 已恢复显示日历内容');
+        } else if (act === 'phone-lan') {
+          await openSettingsModal('desktop');
+          setTimeout(() => document.getElementById('lan-url-box')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
         } else if (act === 'export') {
           exportAllJsonBackup();
-        } else if (act === 'import') {
-          openSmartImportModal(appState.config.ui.homeroomMode ? 'class' : 'my');
         } else if (act === 'print') {
           window.print();
         } else if (act === 'cal-settings') {
           openSettingsModal('desktop');
-        } else if (act === 'account-settings') {
-          openSettingsModal('sync');
         } else if (act === 'features') {
           openModal('modal-features');
         } else if (act === 'about-update') {
           openSettingsModal('update');
-        } else if (act === 'quit') {
+        } else if (act === 'hide-window') {
           if (window.SyncBridge.mode === 'desktop') {
             await window.SyncBridge.windowAction('hide');
           } else {
@@ -2389,22 +2639,48 @@
     // 双击最左侧时间轴 -> 智能批量排作息弹窗事件
     function applyBellAiParseProd() {
       const parsed = parseBellScheduleText(document.getElementById('bb-ai-input').value);
-      if (!parsed) { showToast('请先输入或描述一段作息时间'); return; }
+      if (!parsed) { showToast('请先粘贴学校作息时间表或描述一段作息规则'); return; }
       bellCustomGaps = parsed.customGaps || {};
       if (parsed.classDur) document.getElementById('bb-class-dur').value = parsed.classDur;
       if (parsed.breakDur !== undefined) document.getElementById('bb-break-dur').value = parsed.breakDur;
       if (parsed.amStart) document.getElementById('bb-am-start').value = parsed.amStart;
-      if (parsed.amCount) document.getElementById('bb-am-count').value = parsed.amCount;
+      if (parsed.amCount !== undefined) document.getElementById('bb-am-count').value = parsed.amCount;
       if (parsed.pmStart) document.getElementById('bb-pm-start').value = parsed.pmStart;
       if (parsed.pmCount !== undefined) document.getElementById('bb-pm-count').value = parsed.pmCount;
       if (parsed.evStart) document.getElementById('bb-ev-start').value = parsed.evStart;
       if (parsed.evCount !== undefined) document.getElementById('bb-ev-count').value = parsed.evCount;
       bellEvDur = parsed.evDur || null;
       bellEvBreak = parsed.evBreak !== undefined ? parsed.evBreak : null;
-      recalcBellBatchDraft();
+
       const sumEl = document.getElementById('bb-ai-summary');
+      if (parsed.directPeriods && parsed.directPeriods.length) {
+        bellBatchDraft = parsed.directPeriods.slice();
+        const amList = bellBatchDraft.filter(p => toMin(p.start) < 750);
+        const pmList = bellBatchDraft.filter(p => toMin(p.start) >= 750 && toMin(p.start) < 1080);
+        document.getElementById('bell-noon-badge').textContent = (amList.length && pmList.length)
+          ? `🍱 中午休息：${formatGapDuration(Math.max(0, toMin(pmList[0].start) - toMin(amList[amList.length - 1].end)))}`
+          : `共提取 ${bellBatchDraft.length} 节`;
+        renderBellBatchPreview();
+        if (sumEl) {
+          sumEl.innerHTML = `✅ ${parsed.notes.join(' · ')}（已自动过滤眼操/课间/用餐等非上课行，下方可直接微调后点「一键应用全天作息」）`;
+          sumEl.classList.remove('hidden');
+        }
+        showToast(`⚡ 已直接提取 ${bellBatchDraft.length} 个节次到排表预览`);
+        return;
+      }
+
+      if (!parsed.notes.length) {
+        if (sumEl) {
+          sumEl.innerHTML = '⚠️ 未从文本中识别到有效时段（例如 <code>08:00-08:40</code> 或「早上8点开始、下午2点上课」），请检查粘贴内容后重试';
+          sumEl.classList.remove('hidden');
+        }
+        showToast('未能识别有效作息规则，请补充时间段');
+        return;
+      }
+
+      recalcBellBatchDraft();
       if (sumEl) {
-        sumEl.textContent = `✅ 已自动识别：${parsed.notes.length ? parsed.notes.join(' · ') : '已微调参数'}（下方每节与课间已重算）`;
+        sumEl.textContent = `✅ 已自动识别：${parsed.notes.join(' · ')}（下方每节与课间已重算）`;
         sumEl.classList.remove('hidden');
       }
       showToast('⚡ AI 已识别作息参数并重排全天节次');
@@ -2622,7 +2898,7 @@
         window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
       });
     }
-    ['modal-work', 'modal-reschedule', 'modal-ai-platform', 'modal-day-mode'].forEach(makeModalDraggable);
+    ['modal-work', 'modal-reschedule', 'modal-ai-platform', 'modal-day-mode', 'modal-cn-cal'].forEach(makeModalDraggable);
 
     function fillWorkModalFromAi() {
       const raw = document.getElementById('wk-ai-raw')?.value || '';

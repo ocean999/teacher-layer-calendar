@@ -16,6 +16,28 @@ let tray = null;
 let lanServer = null;
 let isLocked = false;
 
+function writeCrashLog(tag, err) {
+  try {
+    const line = `[${new Date().toISOString()}] [${tag}] ${err && err.stack ? err.stack : err}\n`;
+    fs.appendFileSync(path.join(app.getPath('userData'), 'crash.log'), line, 'utf8');
+  } catch {}
+}
+process.on('uncaughtException', (err) => writeCrashLog('uncaughtException', err));
+process.on('unhandledRejection', (err) => writeCrashLog('unhandledRejection', err));
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 function getDataFilePath() {
   return path.join(app.getPath('userData'), 'teacher-cal-state.json');
 }
@@ -167,6 +189,10 @@ function loadState() {
         classTimetable: parsed.data?.classTimetable && Array.isArray(parsed.data.classTimetable.courses)
           ? parsed.data.classTimetable
           : def.data.classTimetable,
+        inbox: Array.isArray(parsed.data?.inbox) ? parsed.data.inbox : [],
+        dayOverrides: (parsed.data?.dayOverrides && typeof parsed.data.dayOverrides === 'object')
+          ? parsed.data.dayOverrides
+          : {},
       },
       lastSyncedAt: parsed.lastSyncedAt || null,
     };
@@ -374,6 +400,10 @@ function createWindow() {
       mainWindow.hide();
     }
   });
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    writeCrashLog('render-process-gone', JSON.stringify(details));
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
+  });
 }
 
 function registerIpc() {
@@ -495,6 +525,7 @@ function registerIpc() {
 }
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   const icon = buildTrayIcon();
   tray = new Tray(icon);
   tray.setToolTip(`教师双图层桌面日历 v${PKG.version}（右键托盘退出）`);

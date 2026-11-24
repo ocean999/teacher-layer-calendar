@@ -290,8 +290,8 @@ body.mode-web #app, body.mode-android #app {
 /* 图 3 / 图 4 悬浮圆角下拉菜单 */
 .dropdown-menu {
   position: fixed;
-  min-width: 196px;
-  max-height: calc(100vh - 54px);
+  min-width: 210px;
+  max-height: 78vh;
   overflow-y: auto;
   padding: 6px 0;
   border-radius: 12px;
@@ -307,6 +307,14 @@ body.mode-web #app, body.mode-android #app {
 
 .dropdown-menu.hidden {
   display: none;
+}
+
+.dropdown-section-label {
+  padding: 4px 12px 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
 }
 
 .dropdown-item {
@@ -879,9 +887,12 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
   border-radius: 10px;
   border: 1px solid rgba(0, 122, 255, 0.32);
   box-shadow: var(--glass-rim);
-  padding: 3px 7px;
+  padding: 2px 6px;
   overflow: hidden;
   cursor: grab;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   transition: box-shadow 0.16s, transform 0.12s;
   background-image: repeating-linear-gradient(
     -45deg,
@@ -925,8 +936,8 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
 [data-theme="dark"] .course-teal { background-color: rgba(64, 200, 224, 0.26); border-color: rgba(94, 234, 212, 0.48); color: #ccfbf1; }
 [data-theme="dark"] .course-amber { background-color: rgba(255, 159, 10, 0.28); border-color: rgba(253, 224, 71, 0.48); color: #fef3c7; }
 
-.course-title { font-weight: 600; font-size: 12px; line-height: 1.25; display: flex; align-items: center; gap: 4px; }
-.course-time { font-size: 10.5px; opacity: 0.78; line-height: 1.2; }
+.course-title { font-weight: 600; font-size: 11.5px; line-height: 1.15; display: flex; align-items: center; gap: 4px; }
+.course-time { font-size: 10px; opacity: 0.82; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .badge-moved { display: inline-block; padding: 0 5px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #FFCC00; color: #0f172a; flex-shrink: 0; }
 
 .course-ghost {
@@ -1173,12 +1184,13 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
   align-items: center;
 }
 
-/* 液态玻璃弹窗 */
+/* 全局弹窗取消背景磨砂遮罩，保留卡片投影与层次，确保底层日历与桌面内容清晰可见 */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.42);
-  backdrop-filter: blur(8px);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1187,6 +1199,9 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
   transition: background 0.2s ease;
 }
 .modal-backdrop.hidden { display: none; }
+.modal-backdrop .modal {
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.24), 0 0 0 1px var(--border-strong);
+}
 
 .modal-backdrop.clear-backdrop {
   background: transparent;
@@ -1467,3 +1482,39 @@ body:not(.mode-desktop) .desktop-only { display: none !important; }
   input[type="range"] { width: 46px; }
   .field-row { grid-template-columns: 1fr; }
 }
+
+/* 双击顶栏日期弹出的中国农历与法定节假日日历 */
+.cn-cal-nav { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.cn-cal-legend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-sub); }
+.cn-leg-item { display: inline-flex; align-items: center; gap: 4px; }
+.cn-leg-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.cn-cal-wk-hdr { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; font-size: 11.5px; font-weight: 700; color: var(--text-muted); padding-bottom: 2px; }
+.cn-cal-wk-hdr .wk-end { color: #5856D6; }
+[data-theme="dark"] .cn-cal-wk-hdr .wk-end { color: #a5b4fc; }
+.cn-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cn-cell {
+  position: relative; min-height: 54px; padding: 5px 3px 4px;
+  border-radius: 10px; border: 1px solid var(--border-soft); background: var(--glass-pill);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; transition: all 0.14s; user-select: none;
+}
+.cn-cell:hover { transform: translateY(-1px); border-color: var(--apple-blue); box-shadow: 0 4px 12px rgba(0, 122, 255, 0.16); }
+.cn-cell.other-m { opacity: 0.35; }
+.cn-cell.is-weekend { background: rgba(88, 86, 214, 0.10); border-color: rgba(88, 86, 214, 0.28); }
+.cn-cell.is-weekend .cn-solar { color: #5856D6; }
+[data-theme="dark"] .cn-cell.is-weekend .cn-solar { color: #a5b4fc; }
+.cn-cell.is-holiday { background: rgba(255, 59, 48, 0.13); border-color: rgba(255, 59, 48, 0.45); }
+.cn-cell.is-holiday .cn-solar { color: #e11d48; }
+[data-theme="dark"] .cn-cell.is-holiday .cn-solar { color: #fda4af; }
+.cn-cell.is-workday { background: rgba(255, 149, 0, 0.14); border-color: rgba(255, 149, 0, 0.48); }
+.cn-cell.is-workday .cn-solar { color: #c2410c; }
+[data-theme="dark"] .cn-cell.is-workday .cn-solar { color: #fed7aa; }
+.cn-cell.is-today { box-shadow: 0 0 0 2px var(--apple-blue); }
+.cn-solar { font-size: 14px; font-weight: 700; line-height: 1.1; color: var(--text-main); }
+.cn-lunar { font-size: 10px; line-height: 1.15; color: var(--text-muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-lunar.is-fest { color: var(--apple-blue); font-weight: 600; }
+.cn-cell.is-holiday .cn-lunar { color: #e11d48; font-weight: 600; }
+[data-theme="dark"] .cn-cell.is-holiday .cn-lunar { color: #fda4af; }
+.cn-tag { position: absolute; top: 3px; right: 3px; padding: 0 3.5px; border-radius: 4px; font-size: 9px; font-weight: 700; line-height: 14px; }
+.cn-tag.rest { background: #FF3B30; color: #fff; }
+.cn-tag.work { background: #FF9500; color: #fff; }
