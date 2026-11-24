@@ -403,8 +403,8 @@
     document.body.classList.toggle('homeroom-active', homeroomOn);
 
     const className = appState.data.classTimetable?.className || '902班';
-    document.getElementById('homeroom-label-text').textContent = `🏫 班主任班级课表（${className}）`;
-    document.getElementById('homeroom-banner-text').textContent = `🏫 班主任专属视图：${className} 全周课程（已隐藏个人课表与待办）`;
+    document.getElementById('homeroom-label-text').textContent = `🏫 班级课表（${className}）`;
+    document.getElementById('homeroom-banner-text').textContent = `🏫 班级课表专属视图：${className} 全周课程（已隐藏个人课表与待办）`;
 
     document.getElementById('chk-homeroom').checked = homeroomOn;
     document.getElementById('pill-homeroom').classList.toggle('active-homeroom', homeroomOn);
