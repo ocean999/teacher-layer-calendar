@@ -942,6 +942,7 @@
     let moved = false;
     let previewEl = null;
     let magnetGlowEl = null;
+    let swapTargetEl = null;
     let targetDate = null;
     let targetStartStr = null;
     let targetEndStr = null;
@@ -949,6 +950,47 @@
     function clearVisuals() {
       if (previewEl) { previewEl.remove(); previewEl = null; }
       if (magnetGlowEl) { magnetGlowEl.remove(); magnetGlowEl = null; }
+      if (swapTargetEl) { swapTargetEl.classList.remove('swap-target-highlight'); swapTargetEl = null; }
+    }
+
+    function findSwapCandidate(hoveredCol, ev, sMin, eMin) {
+      const sel = kind === 'course'
+        ? `.course-block[data-course-source="${courseSource}"]`
+        : '.work-block';
+      const candidates = Array.from(hoveredCol.querySelectorAll(sel)).filter(el => {
+        if (el === blockEl) return false;
+        if (kind === 'work' && el.dataset.workId === blockEl.dataset.workId) return false;
+        return true;
+      });
+      // 1) Prefer direct pointer hit inside candidate block
+      const directHit = candidates.find(el => {
+        const r = el.getBoundingClientRect();
+        return ev.clientY >= r.top && ev.clientY <= r.bottom;
+      });
+      if (directHit) return directHit;
+
+      // 2) Otherwise pick strongest time-slot overlap after snapping
+      let bestEl = null;
+      let bestOverlap = 0;
+      for (const el of candidates) {
+        let cStart = 0, cEnd = 0;
+        if (kind === 'course') {
+          cStart = toMin(el.dataset.curStart);
+          cEnd = toMin(el.dataset.curEnd);
+        } else {
+          const w = appState.data.works.find(x => x.id === el.dataset.workId);
+          if (!w) continue;
+          cStart = toMin(w.start);
+          cEnd = toMin(w.end);
+        }
+        const ov = Math.min(eMin, cEnd) - Math.max(sMin, cStart);
+        const minThreshold = Math.min(15, Math.min(eMin - sMin, cEnd - cStart) * 0.4);
+        if (ov >= minThreshold && ov > bestOverlap) {
+          bestOverlap = ov;
+          bestEl = el;
+        }
+      }
+      return bestEl;
     }
 
     function onMove(ev) {
@@ -966,8 +1008,8 @@
 
       targetDate = hoveredCol.dataset.colDate;
 
-      // 底层课程启用「🧲 节次磁吸」（按住 Alt 键可临时解除磁吸自由拖放）
-      const useMagnet = (kind === 'course') && (appState.config.ui.magnetSnap !== false) && !ev.altKey;
+      // 课表与待办均启用「🧲 节次磁吸」（按住 Alt 键可临时解除磁吸自由拖放）
+      const useMagnet = (appState.config.ui.magnetSnap !== false) && !ev.altKey;
       let snappedPeriod = useMagnet ? snapToNearestPeriod(rawCenter, range) : null;
 
       let sMin, eMin, label;
@@ -976,7 +1018,7 @@
         eMin = toMin(snappedPeriod.end);
         targetStartStr = snappedPeriod.start;
         targetEndStr = snappedPeriod.end;
-        label = `🧲 磁吸 ${snappedPeriod.label} · ${targetStartStr}-${targetEndStr}`;
+        label = `${kind === 'course' ? '🧲 磁吸' : '📌 磁吸'} ${snappedPeriod.label} · ${targetStartStr}-${targetEndStr}`;
       } else {
         sMin = Math.max(range.start, Math.min(range.end - durMin, Math.round(rawStart / 5) * 5));
         eMin = sMin + durMin;
@@ -987,7 +1029,31 @@
 
       if (previewEl && previewEl.parentElement !== hoveredCol) clearVisuals();
 
-      if (snappedPeriod) {
+      const nextSwap = findSwapCandidate(hoveredCol, ev, sMin, eMin);
+      if (swapTargetEl && swapTargetEl !== nextSwap) {
+        swapTargetEl.classList.remove('swap-target-highlight');
+      }
+      swapTargetEl = nextSwap;
+
+      let previewStart = sMin;
+      let previewEnd = eMin;
+      if (swapTargetEl) {
+        swapTargetEl.classList.add('swap-target-highlight');
+        if (kind === 'course') {
+          previewStart = toMin(swapTargetEl.dataset.curStart);
+          previewEnd = toMin(swapTargetEl.dataset.curEnd);
+          label = `⇄ 对调位置：与「${swapTargetEl.dataset.curTitle || '目标课程'}」互换`;
+        } else {
+          const tw = appState.data.works.find(x => x.id === swapTargetEl.dataset.workId);
+          if (tw) {
+            previewStart = toMin(tw.start);
+            previewEnd = toMin(tw.end);
+            label = `⇄ 对调位置：与「${tw.title || '目标待办'}」互换`;
+          }
+        }
+      }
+
+      if (snappedPeriod && !swapTargetEl) {
         if (!magnetGlowEl) {
           magnetGlowEl = document.createElement('div');
           magnetGlowEl.className = 'magnet-slot-glow';
@@ -1005,8 +1071,9 @@
         previewEl.className = 'drag-preview';
         hoveredCol.appendChild(previewEl);
       }
-      previewEl.style.top = `${(sMin - range.start) * PX_PER_MIN}px`;
-      previewEl.style.height = `${Math.max(24, (eMin - sMin) * PX_PER_MIN)}px`;
+      previewEl.className = swapTargetEl ? 'drag-preview swap-mode' : 'drag-preview';
+      previewEl.style.top = `${(previewStart - range.start) * PX_PER_MIN}px`;
+      previewEl.style.height = `${Math.max(24, (previewEnd - previewStart) * PX_PER_MIN)}px`;
       previewEl.textContent = label;
     }
 
@@ -1014,6 +1081,7 @@
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       blockEl.classList.remove('dragging');
+      const dropSwapEl = swapTargetEl;
       clearVisuals();
 
       if (!moved) {
@@ -1027,6 +1095,44 @@
           });
         } else {
           openWorkModal(blockEl.dataset.workId);
+        }
+        return;
+      }
+
+      if (dropSwapEl) {
+        if (kind === 'course') {
+          await applyCourseSwap(
+            {
+              source: courseSource,
+              courseId: blockEl.dataset.courseId, origDate: blockEl.dataset.origDate,
+              origStart: blockEl.dataset.origStart, origEnd: blockEl.dataset.origEnd,
+              curDate: blockEl.dataset.curDate, curStart: blockEl.dataset.curStart, curEnd: blockEl.dataset.curEnd,
+              title: blockEl.dataset.curTitle, note: blockEl.dataset.curNote,
+              overrideId: blockEl.dataset.overrideId || null,
+            },
+            {
+              source: courseSource,
+              courseId: dropSwapEl.dataset.courseId, origDate: dropSwapEl.dataset.origDate,
+              origStart: dropSwapEl.dataset.origStart, origEnd: dropSwapEl.dataset.origEnd,
+              curDate: dropSwapEl.dataset.curDate, curStart: dropSwapEl.dataset.curStart, curEnd: dropSwapEl.dataset.curEnd,
+              title: dropSwapEl.dataset.curTitle, note: dropSwapEl.dataset.curNote,
+              overrideId: dropSwapEl.dataset.overrideId || null,
+            }
+          );
+        } else {
+          const wA = appState.data.works.find(x => x.id === blockEl.dataset.workId);
+          const wB = appState.data.works.find(x => x.id === dropSwapEl.dataset.workId);
+          if (wA && wB) {
+            const tmp = { date: wA.date, start: wA.start, end: wA.end };
+            wA.date = wB.date; wA.start = wB.start; wA.end = wB.end;
+            wB.date = tmp.date; wB.start = tmp.start; wB.end = tmp.end;
+            const now = Date.now();
+            wA.updatedAt = now;
+            wB.updatedAt = now;
+            render();
+            await persistAndScheduleSync();
+            showToast(`⇄ 待办已对调：「${wA.title}」↔「${wB.title}」`);
+          }
         }
         return;
       }
@@ -1078,42 +1184,58 @@
     window.addEventListener('pointerup', onUp);
   }
 
+  function upsertCourseMoveOverride(list, item, targetDate, targetStart, targetEnd, now) {
+    if (targetDate === item.origDate && targetStart === item.origStart && targetEnd === item.origEnd) {
+      if (item.overrideId) {
+        const existing = list.find(o => o.id === item.overrideId);
+        if (existing) { existing.deleted = true; existing.updatedAt = now; }
+      }
+      return true;
+    }
+
+    const ov = item.overrideId
+      ? list.find(o => o.id === item.overrideId)
+      : list.find(o => o.courseId === item.courseId && o.origDate === item.origDate);
+
+    if (!ov) {
+      list.push({
+        id: uid('ov'), courseId: item.courseId, origDate: item.origDate,
+        origStart: item.origStart, origEnd: item.origEnd, type: 'move',
+        targetDate, targetStart, targetEnd,
+        title: item.title, note: item.note || '', updatedAt: now, deleted: false,
+      });
+    } else {
+      Object.assign(ov, {
+        type: 'move', targetDate, targetStart, targetEnd,
+        title: item.title, note: item.note || '', deleted: false, updatedAt: now,
+      });
+    }
+    return false;
+  }
+
   async function applySingleCourseMove(params) {
     const now = Date.now();
     const isClass = params.source === 'class';
     if (isClass && !appState.data.classTimetable.overrides) appState.data.classTimetable.overrides = [];
     const list = isClass ? appState.data.classTimetable.overrides : appState.data.overrides;
 
-    if (params.targetDate === params.origDate && params.targetStart === params.origStart && params.targetEnd === params.origEnd) {
-      if (params.overrideId) {
-        const existing = list.find(o => o.id === params.overrideId);
-        if (existing) { existing.deleted = true; existing.updatedAt = now; }
-      }
-      render(); await persistAndScheduleSync();
-      showToast('已恢复到原定上课节次');
-      return;
-    }
-
-    let ov = params.overrideId
-      ? list.find(o => o.id === params.overrideId)
-      : list.find(o => o.courseId === params.courseId && o.origDate === params.origDate);
-
-    if (!ov) {
-      list.push({
-        id: uid('ov'), courseId: params.courseId, origDate: params.origDate,
-        origStart: params.origStart, origEnd: params.origEnd, type: 'move',
-        targetDate: params.targetDate, targetStart: params.targetStart, targetEnd: params.targetEnd,
-        title: params.title, note: params.note || '', updatedAt: now, deleted: false,
-      });
-    } else {
-      Object.assign(ov, {
-        type: 'move', targetDate: params.targetDate, targetStart: params.targetStart, targetEnd: params.targetEnd,
-        title: params.title, note: params.note || '', deleted: false, updatedAt: now,
-      });
-    }
-
+    const restored = upsertCourseMoveOverride(list, params, params.targetDate, params.targetStart, params.targetEnd, now);
     render(); await persistAndScheduleSync();
-    showToast(`单次调课成功：已磁吸至 ${params.targetDate.slice(5)} ${params.targetStart}-${params.targetEnd}`);
+    showToast(restored
+      ? '已恢复到原定上课节次'
+      : `单次调课成功：已磁吸至 ${params.targetDate.slice(5)} ${params.targetStart}-${params.targetEnd}`);
+  }
+
+  async function applyCourseSwap(a, b) {
+    const now = Date.now();
+    const isClass = a.source === 'class';
+    if (isClass && !appState.data.classTimetable.overrides) appState.data.classTimetable.overrides = [];
+    const list = isClass ? appState.data.classTimetable.overrides : appState.data.overrides;
+
+    upsertCourseMoveOverride(list, a, b.curDate, b.curStart, b.curEnd, now);
+    upsertCourseMoveOverride(list, b, a.curDate, a.curStart, a.curEnd, now);
+    render(); await persistAndScheduleSync();
+    showToast(`⇄ 课表已对调：「${a.title}」↔「${b.title}」`);
   }
 
   let rsColorCtx = { color: 'sky', customBg: '' };
