@@ -819,14 +819,15 @@
   function applyLockUi(locked) {
     isUiLocked = !!locked;
     document.body.classList.toggle('ui-locked', isUiLocked);
+    document.getElementById('lock-bottom-badge')?.classList.toggle('hidden', !isUiLocked);
     const lockBtn = document.getElementById('btn-lock');
     const lockSvg = document.getElementById('lock-svg');
     const lockKeyLabel = appState?.config?.ui?.hotkeys?.lock?.key || 'Ctrl+Alt+L';
     if (lockBtn) {
       lockBtn.classList.toggle('btn-lock-active', isUiLocked);
       lockBtn.title = isUiLocked
-        ? `当前已锁定防误触，点击立即解锁（或按 ${lockKeyLabel}）`
-        : '锁定固定防误触（锁定后窗口不可拖动缩放，课表与编辑按钮禁用）';
+        ? `当前已锁定并固定在桌面最底层，点击立即解锁恢复正常（或按 ${lockKeyLabel}）`
+        : '点击锁定防误触并自动下沉固定在桌面最底层';
     }
     if (lockSvg) {
       lockSvg.innerHTML = isUiLocked
@@ -3578,14 +3579,14 @@
       btn.addEventListener('click', () => switchSettingsTab(btn.dataset.setTab));
     });
 
-    // 右上角锁定固定防误触按钮（支持点击切换锁定/解锁）
+    // 右上角锁定固定防误触按钮（支持点击切换锁定/解锁，锁定时自动下沉固定桌面最底层）
     const toggleLock = async () => {
       const nextLocked = !isUiLocked;
       applyLockUi(nextLocked);
       appState.config.ui.locked = nextLocked;
       await window.SyncBridge.setDesktopOptions({ locked: nextLocked });
       await persistAndScheduleSync(false);
-      showToast(nextLocked ? '🔒 已锁定固定位置与尺寸（防误触已开启）' : '🔓 已解锁，可自由调整窗口并编辑课表');
+      showToast(nextLocked ? '🔒 已锁定并自动下沉固定在桌面最底层（再次点击右上角锁按钮才恢复正常）' : '🔓 已解锁：已脱离桌面最底层，恢复正常窗口层级与编辑拖动');
     };
     document.getElementById('btn-lock').addEventListener('click', toggleLock);
 

@@ -16,6 +16,7 @@
         <span class="topbar-date-title" id="topbar-full-date" title="单击回到今天 · 双击打开中国农历节假日日历">2026年11月23日 星期一 农历十月十五</span>
         <span class="topbar-week-chip" id="topbar-week-chip">第13周</span>
         <span class="topbar-next-pill" id="topbar-next-pill" title="当前或下一节日程实时倒计时">🔔 加载中</span>
+        <span class="lock-bottom-badge hidden" id="lock-bottom-badge" title="当前已固定在桌面最底层，点击右上角锁图标即可解锁恢复">📌 已固定桌面最底层</span>
       </div>
 
       <div class="topbar-right">
@@ -35,8 +36,8 @@
           <svg viewBox="0 0 24 24"><path d="M17.5 19H7a4.5 4.5 0 0 1-.4-8.98A5.5 5.5 0 0 1 17.3 9.2 4 4 0 0 1 17.5 19Z"/><path d="M9.5 14l2 2 3.5-3.5"/></svg>
         </button>
 
-        <!-- 🔒 锁定固定防误触 -->
-        <button class="icon-btn" id="btn-lock" title="锁定固定防误触（锁定后窗口不可拖动缩放，课表与编辑按钮禁用）">
+        <!-- 🔒 锁定固定防误触（点击后自动下沉固定在桌面最底层，再次点击解锁恢复正常） -->
+        <button class="icon-btn" id="btn-lock" title="点击锁定防误触并自动下沉固定在桌面最底层">
           <svg id="lock-svg" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/></svg>
         </button>
 
@@ -588,7 +589,7 @@
               </div>
             </div>
             <div class="set-row">
-              <div><div>锁定 / 解锁固定防误触</div><div class="set-row-sub">锁定窗口位置大小并防止误拖课程</div></div>
+              <div><div>锁定 / 解锁固定防误触</div><div class="set-row-sub">锁定窗口位置大小、防误拖课程，并自动下沉固定于桌面最底层</div></div>
               <div style="display:flex;gap:7px;align-items:center;">
                 <input type="text" readonly class="shortcut-key-box" id="hk-lock-key" value="Ctrl+Alt+L" title="点击后按下新快捷键" />
                 <label class="ios-switch"><input type="checkbox" id="sw-hk-lock" checked /><span class="ios-switch-track"></span></label>
@@ -636,7 +637,7 @@
         <!-- 设置子页 5：更新与关于 -->
         <div id="set-panel-update" style="display:none;flex-direction:column;gap:10px;">
           <div class="hint-box" style="margin:0;">
-            当前版本：<strong id="upd-cur-ver">v1.5.6</strong><br/>
+            当前版本：<strong id="upd-cur-ver">v1.5.7</strong><br/>
             在线更新仅覆盖程序代码目录，个人课表、多班级课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
           </div>
           <div class="hint-box" style="margin:0;font-size:11.5px;">

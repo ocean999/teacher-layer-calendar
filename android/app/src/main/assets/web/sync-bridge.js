@@ -378,12 +378,12 @@
 
     async getAppVersion() {
       if (mode === 'desktop') return window.desktopApi.getAppVersion();
-      return '1.5.6';
+      return '1.5.7';
     },
 
     async checkUpdate(cfg) {
       if (mode === 'desktop') return window.desktopApi.checkUpdate(cfg);
-      return { ok: true, hasUpdate: false, currentVersion: '1.5.6', latestVersion: '1.5.6', message: '在线一键热更新支持在 Windows 桌面端运行；安卓端可在 GitHub Actions 自动生成最新 APK。' };
+      return { ok: true, hasUpdate: false, currentVersion: '1.5.7', latestVersion: '1.5.7', message: '在线一键热更新支持在 Windows 桌面端运行；安卓端可在 GitHub Actions 自动生成最新 APK。' };
     },
 
     async applyUpdate(downloadUrl) {

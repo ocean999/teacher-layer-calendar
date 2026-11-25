@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShor
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
+const { spawn } = require('child_process');
 const webdav = require('./webdav');
 const excelImport = require('./excel-import');
 const updater = require('./updater');
@@ -15,6 +16,11 @@ let mainWindow = null;
 let tray = null;
 let lanServer = null;
 let isLocked = false;
+let winZProc = null;
+let winZReady = false;
+let pendingWinZLine = null;
+let reassertBottomTimer = null;
+let reassertFollowTimer = null;
 
 function writeCrashLog(tag, err) {
   try {
@@ -346,15 +352,125 @@ function buildTrayIcon() {
   return nativeImage.createFromBuffer(png);
 }
 
+function ensureWinZHelper() {
+  if (process.platform !== 'win32') return null;
+  if (winZProc && !winZProc.killed) return winZProc;
+  winZReady = false;
+  const csCode = [
+    'using System;',
+    'using System.Runtime.InteropServices;',
+    'public static class WinZ {',
+    '  [DllImport("user32.dll")]',
+    '  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);',
+    '  [DllImport("user32.dll")]',
+    '  public static extern bool BringWindowToTop(IntPtr hWnd);',
+    '  [DllImport("user32.dll")]',
+    '  public static extern bool SetForegroundWindow(IntPtr hWnd);',
+    '}',
+  ].join('\n');
+  const csB64 = Buffer.from(csCode, 'utf8').toString('base64');
+  const psScript = [
+    `$cs = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${csB64}'))`,
+    'Add-Type -TypeDefinition $cs -Language CSharp',
+    '[Console]::Out.WriteLine("READY")',
+    '[Console]::Out.Flush()',
+    'while (($line = [Console]::In.ReadLine()) -ne $null) {',
+    '  $parts = $line.Trim().Split(" ")',
+    '  if ($parts.Length -lt 2) { continue }',
+    '  $cmd = $parts[0]; $h = [IntPtr]([Int64]$parts[1])',
+    '  if ($cmd -eq "BOTTOM") {',
+    '    [void][WinZ]::SetWindowPos($h, [IntPtr]1, 0, 0, 0, 0, 0x0013)',
+    '  } elseif ($cmd -eq "NORMAL") {',
+    '    [void][WinZ]::SetWindowPos($h, [IntPtr](-2), 0, 0, 0, 0, 0x0003)',
+    '    [void][WinZ]::SetWindowPos($h, [IntPtr]0, 0, 0, 0, 0, 0x0043)',
+    '    [void][WinZ]::BringWindowToTop($h)',
+    '    [void][WinZ]::SetForegroundWindow($h)',
+    '  }',
+    '}',
+  ].join('\n');
+  const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+  winZProc = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded], {
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  winZProc.stdout.on('data', (chunk) => {
+    if (!winZReady && chunk.toString().includes('READY')) {
+      winZReady = true;
+      if (pendingWinZLine && winZProc && winZProc.stdin && !winZProc.stdin.destroyed) {
+        const line = pendingWinZLine;
+        pendingWinZLine = null;
+        try { winZProc.stdin.write(line); } catch {}
+      }
+    }
+  });
+  const reset = () => { winZProc = null; winZReady = false; };
+  winZProc.on('exit', reset);
+  winZProc.on('error', reset);
+  return winZProc;
+}
+
+function getMainHwndDecimal() {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  try {
+    const buf = mainWindow.getNativeWindowHandle();
+    if (!buf || !buf.length) return null;
+    return buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
+  } catch {
+    return null;
+  }
+}
+
+function sendWinZCommand(cmd, hwndStr) {
+  if (process.platform !== 'win32' || !hwndStr) return;
+  const p = ensureWinZHelper();
+  if (!p) return;
+  const line = `${cmd} ${hwndStr}\n`;
+  if (!winZReady || !p.stdin || p.stdin.destroyed) {
+    pendingWinZLine = line;
+    return;
+  }
+  try { p.stdin.write(line); } catch {}
+}
+
+function applyWindowBottomPin(locked) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const hwnd = getMainHwndDecimal();
+  if (locked) {
+    try { mainWindow.setAlwaysOnTop(false); } catch {}
+    sendWinZCommand('BOTTOM', hwnd);
+  } else {
+    clearTimeout(reassertBottomTimer);
+    clearTimeout(reassertFollowTimer);
+    sendWinZCommand('NORMAL', hwnd);
+    try { mainWindow.focus(); } catch {}
+  }
+}
+
+function scheduleReassertBottom(delayMs = 45) {
+  clearTimeout(reassertBottomTimer);
+  clearTimeout(reassertFollowTimer);
+  reassertBottomTimer = setTimeout(() => {
+    if (isLocked && mainWindow && !mainWindow.isDestroyed()) {
+      applyWindowBottomPin(true);
+    }
+  }, delayMs);
+  reassertFollowTimer = setTimeout(() => {
+    if (isLocked && mainWindow && !mainWindow.isDestroyed()) {
+      applyWindowBottomPin(true);
+    }
+  }, Math.max(delayMs + 95, 140));
+}
+
 function setDesktopLock(locked) {
   isLocked = !!locked;
   const cur = loadState();
   cur.config.ui.locked = isLocked;
   saveState(cur);
   if (mainWindow && !mainWindow.isDestroyed()) {
-    // 锁定后固定窗口位置与长宽高（不再穿透整窗，使核心切换按钮与解锁按钮仍可正常点击）
+    // 锁定后固定窗口位置与长宽高，并自动下沉固定在桌面最底层；解锁才恢复正常窗口层级
     mainWindow.setMovable(!isLocked);
     mainWindow.setResizable(!isLocked);
+    applyWindowBottomPin(isLocked);
     mainWindow.webContents.send('win:lock-changed', isLocked);
   }
   updateTrayMenu();
@@ -366,9 +482,18 @@ function updateTrayMenu() {
   const lanInfo = lanServer ? lanServer.getInfo() : { urls: [] };
   const lanLabel = lanInfo.urls.length ? `手机局域网地址：${lanInfo.urls[0]}` : '局域网服务未开启';
   const menu = Menu.buildFromTemplate([
-    { label: `显示 / 聚焦桌面日历 (v${PKG.version})`, click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     {
-      label: isLocked ? '🔓 解锁桌面日历（恢复编辑与拖动）' : '🔒 锁定固定桌面（防误触）',
+      label: `显示 / 聚焦桌面日历 (v${PKG.version})`,
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          if (isLocked) scheduleReassertBottom(30);
+          else mainWindow.focus();
+        }
+      },
+    },
+    {
+      label: isLocked ? '🔓 解锁并恢复正常窗口层级' : '🔒 锁定并下沉固定在桌面最底层',
       click: () => setDesktopLock(!isLocked),
     },
     { type: 'separator' },
@@ -527,6 +652,23 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(WEB_DIR, 'index.html'));
+
+  if (process.platform === 'win32') {
+    try {
+      mainWindow.hookWindowMessage(0x0021, () => {
+        if (isLocked) scheduleReassertBottom(45);
+      });
+    } catch {}
+  }
+  mainWindow.on('focus', () => {
+    if (isLocked) scheduleReassertBottom(45);
+  });
+  mainWindow.on('show', () => {
+    if (isLocked) scheduleReassertBottom(45);
+  });
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (isLocked) applyWindowBottomPin(true);
+  });
 
   let saveBoundsTimer = null;
   const scheduleBoundsSave = () => {
@@ -693,9 +835,10 @@ app.whenReady().then(() => {
   tray = new Tray(icon);
   tray.setToolTip(`教师双图层桌面日历 v${PKG.version}（右键托盘退出）`);
   tray.on('click', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show();
-      mainWindow.focus();
+      if (isLocked) scheduleReassertBottom(30);
+      else mainWindow.focus();
     }
   });
   tray.on('double-click', () => {
@@ -740,6 +883,7 @@ app.whenReady().then(() => {
   lanServer.start();
 
   registerIpc();
+  ensureWinZHelper();
   createWindow();
   updateTrayMenu();
 
@@ -747,6 +891,13 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
+  clearTimeout(reassertBottomTimer);
+  clearTimeout(reassertFollowTimer);
+  if (winZProc) {
+    try { winZProc.stdin.end(); } catch {}
+    try { winZProc.kill(); } catch {}
+    winZProc = null;
+  }
   globalShortcut.unregisterAll();
   if (lanServer) lanServer.stop();
 });
