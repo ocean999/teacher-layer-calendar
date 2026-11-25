@@ -25,4 +25,9 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.on('win:lock-changed', listener);
     return () => ipcRenderer.removeListener('win:lock-changed', listener);
   },
+  onHotkeyAction: (cb) => {
+    const listener = (_, action) => cb(action);
+    ipcRenderer.on('win:hotkey-action', listener);
+    return () => ipcRenderer.removeListener('win:hotkey-action', listener);
+  },
 });

@@ -369,114 +369,278 @@
     </div>
   </div>
 
-  <!-- 弹窗 5：「⚙ 系统偏好设置」弹窗（4 个职责清晰、零重叠页签：外观与皮肤 / 日历与排课 / 桌面与提醒 / 更新与关于） -->
+  <!-- 弹窗 5：「⚙ 系统偏好设置」弹窗（5 个职责清晰、零重叠页签 + 顶部固定正中 & 向下延伸 & 恢复默认设置） -->
   <div class="modal-backdrop clear-backdrop hidden" id="modal-settings">
-    <div class="modal modal-lg" style="max-width:550px;">
+    <div class="modal modal-lg" style="max-width:595px;">
       <div class="modal-header">
         <span>⚙ 系统偏好设置</span>
         <button class="btn btn-icon" data-close="modal-settings">✕</button>
       </div>
-      <div class="modal-body">
-        <div class="seg-group" style="align-self:flex-start;">
-          <button class="seg-btn active" data-set-tab="theme">👕 外观与皮肤</button>
-          <button class="seg-btn" data-set-tab="cal">📅 日历与排课</button>
-          <button class="seg-btn" data-set-tab="desktop">💻 桌面与提醒</button>
+      <div class="modal-body" style="gap:10px;">
+        <div class="seg-group" style="align-self:flex-start;flex-wrap:wrap;">
+          <button class="seg-btn active" data-set-tab="theme">👕 外观与字体</button>
+          <button class="seg-btn" data-set-tab="cal">📅 日历与节气</button>
+          <button class="seg-btn" data-set-tab="memo">📝 待办与音效</button>
+          <button class="seg-btn" data-set-tab="adv">⌨ 高级与快捷键</button>
           <button class="seg-btn" data-set-tab="update">⬆ 更新与关于</button>
         </div>
 
-        <!-- 设置子页 1：外观与皮肤（纯视觉控制：日夜模式 / 纯色皮肤 / 透明风格与唯一透明度滑块） -->
-        <div id="set-panel-theme" style="display:flex;flex-direction:column;gap:11px;">
-          <div class="field">
-            <label>三档外观模式</label>
-            <div class="seg-group" id="theme-seg" style="align-self:flex-start;">
-              <button class="seg-btn" data-theme-mode="light">☀️ 白天</button>
-              <button class="seg-btn" data-theme-mode="dark">🌙 黑夜</button>
-              <button class="seg-btn active" data-theme-mode="auto">🌗 自动识别</button>
+        <!-- 设置子页 1：外观与字体（日夜模式 / 纯色皮肤 / 毛玻璃与透明度 / 字体字号 / 重点色自定义） -->
+        <div id="set-panel-theme" style="display:flex;flex-direction:column;gap:9px;">
+          <div class="set-card">
+            <div class="set-card-hdr"><span>皮肤与玻璃质感</span></div>
+            <div class="set-row">
+              <span>三档外观模式</span>
+              <div class="seg-group" id="theme-seg">
+                <button class="seg-btn" data-theme-mode="light">☀️ 白天</button>
+                <button class="seg-btn" data-theme-mode="dark">🌙 黑夜</button>
+                <button class="seg-btn active" data-theme-mode="auto">🌗 自动识别</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>纯色皮肤 <span id="skin-color-name" style="color:var(--text-muted);font-size:11px;margin-left:4px;">默认</span></label>
+              <div class="skin-swatch-row">
+                <button class="skin-swatch skin-swatch-reset active" data-skin-color="" title="默认主题色">默认</button>
+                <button class="skin-swatch" data-skin-color="#ffffff" title="极简纯白" style="background:#ffffff;"></button>
+                <button class="skin-swatch" data-skin-color="#f5f1e6" title="护眼米纸" style="background:#f5f1e6;"></button>
+                <button class="skin-swatch" data-skin-color="#e7f3ec" title="豆沙护眼绿" style="background:#e7f3ec;"></button>
+                <button class="skin-swatch" data-skin-color="#e6f0fb" title="晴空浅蓝" style="background:#e6f0fb;"></button>
+                <button class="skin-swatch" data-skin-color="#f7eaf2" title="樱花柔粉" style="background:#f7eaf2;"></button>
+                <button class="skin-swatch" data-skin-color="#ebe8f7" title="淡雅薰衣紫" style="background:#ebe8f7;"></button>
+                <button class="skin-swatch" data-skin-color="#5d8aa8" title="雾霾青蓝" style="background:#5d8aa8;"></button>
+                <button class="skin-swatch" data-skin-color="#1e293b" title="深海石板" style="background:#1e293b;"></button>
+                <button class="skin-swatch" data-skin-color="#121212" title="极夜纯黑" style="background:#121212;"></button>
+                <input type="color" id="inp-custom-skin" class="skin-color-picker" value="#e7f3ec" title="自定义任意纯色" />
+              </div>
+            </div>
+            <div class="set-row">
+              <span>毛玻璃模糊特效</span>
+              <label class="ios-switch"><input type="checkbox" id="sw-frosted-blur" checked /><span class="ios-switch-track"></span></label>
+            </div>
+            <div class="field">
+              <label>透明预设 &amp; 不透明度 <span id="bg-alpha-readout" style="color:var(--apple-blue);font-weight:600;margin-left:4px;">72% · 磨砂玻璃</span></label>
+              <div class="seg-group" id="bg-style-seg" style="align-self:flex-start;margin-bottom:4px;">
+                <button class="seg-btn" data-bg-style="transparent">🧊 全透明</button>
+                <button class="seg-btn" data-bg-style="translucent">💧 半透明</button>
+                <button class="seg-btn active" data-bg-style="frosted">🫧 磨砂玻璃</button>
+                <button class="seg-btn" data-bg-style="solid">🎴 实色</button>
+              </div>
+              <input type="range" id="rng-bg-alpha-set" min="0" max="98" value="72" style="width:100%;" />
             </div>
           </div>
-          <div class="field">
-            <label>纯色皮肤 <span id="skin-color-name" style="color:var(--text-muted);font-size:11.5px;margin-left:6px;">默认</span></label>
-            <div class="skin-swatch-row">
-              <button class="skin-swatch skin-swatch-reset active" data-skin-color="" title="默认主题色">默认</button>
-              <button class="skin-swatch" data-skin-color="#ffffff" title="极简纯白" style="background:#ffffff;"></button>
-              <button class="skin-swatch" data-skin-color="#f5f1e6" title="护眼米纸" style="background:#f5f1e6;"></button>
-              <button class="skin-swatch" data-skin-color="#e7f3ec" title="豆沙护眼绿" style="background:#e7f3ec;"></button>
-              <button class="skin-swatch" data-skin-color="#e6f0fb" title="晴空浅蓝" style="background:#e6f0fb;"></button>
-              <button class="skin-swatch" data-skin-color="#f7eaf2" title="樱花柔粉" style="background:#f7eaf2;"></button>
-              <button class="skin-swatch" data-skin-color="#ebe8f7" title="淡雅薰衣紫" style="background:#ebe8f7;"></button>
-              <button class="skin-swatch" data-skin-color="#5d8aa8" title="雾霾青蓝" style="background:#5d8aa8;"></button>
-              <button class="skin-swatch" data-skin-color="#1e293b" title="深海石板" style="background:#1e293b;"></button>
-              <button class="skin-swatch" data-skin-color="#121212" title="极夜纯黑" style="background:#121212;"></button>
-              <input type="color" id="inp-custom-skin" class="skin-color-picker" value="#e7f3ec" title="自定义任意纯色" />
+
+          <div class="set-card">
+            <div class="set-card-hdr"><span>字体与字号</span></div>
+            <div style="display:grid;grid-template-columns:1.3fr 1fr auto;gap:8px;align-items:center;">
+              <div class="field">
+                <label>界面字体</label>
+                <select class="select" id="sel-font-family" style="padding:4px 7px;">
+                  <option value="system">系统默认（苹果 / 思源）</option>
+                  <option value="yahei">微软雅黑（清晰办公）</option>
+                  <option value="kaiti">楷体（温和教案风）</option>
+                  <option value="songti">宋体（经典印刷）</option>
+                  <option value="mono">等宽字体（时间对齐）</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>全局字号</label>
+                <select class="select" id="sel-font-scale" style="padding:4px 7px;">
+                  <option value="12">紧凑 (12px)</option>
+                  <option value="13" selected>标准 (13px)</option>
+                  <option value="14">舒适 (14px)</option>
+                  <option value="15">大字清晰 (15px)</option>
+                </select>
+              </div>
+              <div class="field" style="align-items:center;">
+                <label>主文字色</label>
+                <input type="color" id="col-text-main" class="skin-color-picker" value="#0f172a" title="自定义主要文字颜色" />
+              </div>
             </div>
           </div>
-          <div class="field">
-            <label>背景风格（透明 / 半透明预设）</label>
-            <div class="seg-group" id="bg-style-seg" style="align-self:flex-start;">
-              <button class="seg-btn" data-bg-style="transparent">🧊 全透明</button>
-              <button class="seg-btn" data-bg-style="translucent">💧 半透明</button>
-              <button class="seg-btn active" data-bg-style="frosted">🫧 磨砂玻璃</button>
-              <button class="seg-btn" data-bg-style="solid">🎴 实色</button>
+
+          <div class="set-card">
+            <div class="set-card-hdr"><span>日历重点颜色自定义</span><button class="btn" id="btn-reset-colors" style="padding:1px 8px;font-size:10.5px;">还原默认色</button></div>
+            <div class="set-color-grid">
+              <div class="set-color-item"><span>今日边框与高亮色</span><input type="color" id="col-today-accent" class="skin-color-picker" value="#007aff" /></div>
+              <div class="set-color-item"><span>休息日列底色</span><input type="color" id="col-rest-bg" class="skin-color-picker" value="#eef2ff" /></div>
+              <div class="set-color-item"><span>节假日文字颜色</span><input type="color" id="col-holiday-text" class="skin-color-picker" value="#e11d48" /></div>
+              <div class="set-color-item"><span>二十四节气文字色</span><input type="color" id="col-term-text" class="skin-color-picker" value="#16a34a" /></div>
             </div>
-          </div>
-          <div class="field">
-            <label>背景不透明度精细调节 <span id="bg-alpha-readout" style="color:var(--apple-blue);font-weight:600;margin-left:6px;">72% · 磨砂玻璃</span></label>
-            <input type="range" id="rng-bg-alpha-set" min="0" max="98" value="72" style="width:100%;" />
           </div>
         </div>
 
-        <!-- 设置子页 2：日历与排课（仅时间轴显示范围、磁吸与拖拽对调规则、作息与课表管理入口） -->
-        <div id="set-panel-cal" style="display:none;flex-direction:column;gap:11px;">
-          <div class="field">
-            <label>时间轴显示范围</label>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-              <button class="toggle-chip" id="btn-toggle-evening" title="开启或隐藏晚自习时间段">🌃 展示晚自习</button>
-              <button class="toggle-chip" id="btn-toggle-weekend" title="开启或隐藏周六周日">📅 展示周末</button>
+        <!-- 设置子页 2：日历与节气（时间轴 / 课表入口 / 周数 / 休息日勾选 / 法定休息日·节日·农历·二十四节气·悬停忌宜） -->
+        <div id="set-panel-cal" style="display:none;flex-direction:column;gap:9px;">
+          <div class="set-card">
+            <div class="set-card-hdr"><span>排课与时间轴</span></div>
+            <div class="set-row">
+              <span>时段展示与课表入口</span>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                <button class="toggle-chip" id="btn-toggle-evening" title="开启或隐藏晚自习时间段">🌃 展示晚自习</button>
+                <button class="toggle-chip" id="btn-toggle-weekend" title="开启或隐藏周六周日">📅 展示周末</button>
+                <button class="btn" id="btn-open-bell-from-set" style="padding:3px 9px;font-size:11px;">⚡ 批量排作息</button>
+                <button class="btn" id="btn-open-tt-from-set" style="padding:3px 9px;font-size:11px;">📋 课程表管理</button>
+              </div>
+            </div>
+            <div class="set-row">
+              <span>显示顶栏当前周数（第 X 周）</span>
+              <label class="ios-switch"><input type="checkbox" id="sw-show-weeknum" checked /><span class="ios-switch-track"></span></label>
+            </div>
+            <div class="set-row" title="拖动课程时自动略过课间/午休，像磁铁一样吸附到有效节次（按住 Alt 可临时自由拖动）">
+              <span>🧲 节次磁吸与拖拽对调（略过课间，拖到另一卡片即可互换）</span>
+              <label class="ios-switch"><input type="checkbox" id="chk-magnet" checked /><span class="ios-switch-track"></span></label>
             </div>
           </div>
-          <div class="field">
-            <label>拖拽排课规则</label>
-            <label class="layer-ctrl" title="拖动课程时自动略过课间/午休，像磁铁一样吸附到有效节次（按住 Alt 可临时自由拖动）">
-              <input type="checkbox" id="chk-magnet" checked />
-              <span>🧲 节次磁吸与拖拽对调（自动略过课间，拖到另一卡片上松手即可互换）</span>
-            </label>
+
+          <div class="set-card">
+            <div class="set-card-hdr"><span>休息日与列名标注</span></div>
+            <div class="set-row">
+              <span>在日历中显示休息日列（含周末）</span>
+              <label class="ios-switch"><input type="checkbox" id="sw-show-rest" /><span class="ios-switch-track"></span></label>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+              <span style="font-size:11px;color:var(--text-muted);margin-right:2px;">选择休息日：</span>
+              <label class="rest-wd-chip"><input type="checkbox" data-rest-wd="1" /> 周一</label>
+              <label class="rest-wd-chip"><input type="checkbox" data-rest-wd="2" /> 周二</label>
+              <label class="rest-wd-chip"><input type="checkbox" data-rest-wd="3" /> 周三</label>
+              <label class="rest-wd-chip"><input type="checkbox" data-rest-wd="4" /> 周四</label>
+              <label class="rest-wd-chip"><input type="checkbox" data-rest-wd="5" /> 周五</label>
+              <label class="rest-wd-chip"><input type="checkbox" data-rest-wd="6" checked /> 周六</label>
+              <label class="rest-wd-chip"><input type="checkbox" data-rest-wd="7" checked /> 周日</label>
+            </div>
           </div>
-          <div class="field">
-            <label>作息与课表基准</label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="btn" id="btn-open-bell-from-set">⚡ 打开智能批量排作息时间</button>
-              <button class="btn" id="btn-open-tt-from-set">📋 课程表与单双周管理</button>
+
+          <div class="set-card">
+            <div class="set-card-hdr"><span>节日、农历与二十四节气</span></div>
+            <div class="set-row"><span>显示法定休息日 / 调休角标（休 / 班）</span><label class="ios-switch"><input type="checkbox" id="sw-show-stat" checked /><span class="ios-switch-track"></span></label></div>
+            <div class="set-row"><span>显示重要节日（春节 / 清明 / 端午 / 中秋 / 教师节等）</span><label class="ios-switch"><input type="checkbox" id="sw-show-fest" checked /><span class="ios-switch-track"></span></label></div>
+            <div class="set-row"><span>在日历表头与月历格显示农历日期</span><label class="ios-switch"><input type="checkbox" id="sw-show-lunar" checked /><span class="ios-switch-track"></span></label></div>
+            <div class="set-row"><span>显示二十四节气（如：小雪 / 大雪 / 冬至）</span><label class="ios-switch"><input type="checkbox" id="sw-show-solarterm" checked /><span class="ios-switch-track"></span></label></div>
+            <div class="set-row">
+              <div><div>显示黄历忌宜提示</div><div class="set-row-sub">鼠标悬停到日期表头、月历格或农历日历时显示今日宜忌</div></div>
+              <label class="ios-switch"><input type="checkbox" id="sw-show-yiji" /><span class="ios-switch-track"></span></label>
             </div>
           </div>
         </div>
 
-        <!-- 设置子页 3：桌面与提醒（课程/待办提醒 + 开机自启 + 贴桌面/托盘与局域网） -->
-        <div id="set-panel-desktop" style="display:none;flex-direction:column;gap:11px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <label class="layer-ctrl"><input type="checkbox" id="opt-reminder" checked /><span>🔔 上课前 5 分钟 & 待办到点卡片提醒</span></label>
-            <button class="btn" id="btn-test-reminder" style="padding:2px 9px;font-size:11px;">试听提醒</button>
-          </div>
-          <label class="layer-ctrl"><input type="checkbox" id="opt-autolaunch" /><span>🚀 Windows 开机自动启动（开机后自动后台贴桌面运行）</span></label>
-          <div class="desktop-only" style="flex-direction:column;gap:10px;width:100%;">
-            <label class="layer-ctrl"><input type="checkbox" id="opt-desktop-pin" checked /> 贴桌面模式（不在任务栏占位，右下角托盘常驻）</label>
-            <div id="lan-url-box" class="hint-box" style="margin:0;"></div>
-            <div style="display:flex;justify-content:flex-end;">
-              <button class="btn btn-primary" id="btn-desktop-opt-save">保存桌面选项</button>
+        <!-- 设置子页 3：待办与音效（项目符号 / 已完成末尾 / 未完成 30 天内顺延 / 完成与提醒提示音） -->
+        <div id="set-panel-memo" style="display:none;flex-direction:column;gap:9px;">
+          <div class="set-card">
+            <div class="set-card-hdr"><span>待办条目项目符号样式</span></div>
+            <div class="bullet-card-row">
+              <button type="button" class="bullet-card active" data-bullet-style="none"><span style="font-size:13px;">三</span><span>无项目符号</span></button>
+              <button type="button" class="bullet-card" data-bullet-style="number"><span style="font-size:13px;">1. 2. 3.</span><span>项目数字编号</span></button>
+              <button type="button" class="bullet-card" data-bullet-style="dot"><span style="font-size:13px;">• • •</span><span>项目圆点</span></button>
             </div>
           </div>
+
+          <div class="set-card">
+            <div class="set-card-hdr"><span>任务排序与自动顺延规则</span></div>
+            <div class="set-row"><span>显示已完成待办任务</span><label class="ios-switch"><input type="checkbox" id="sw-show-done-work" checked /><span class="ios-switch-track"></span></label></div>
+            <div class="set-row"><span>标记完成后自动排到列表末尾</span><label class="ios-switch"><input type="checkbox" id="sw-done-bottom" checked /><span class="ios-switch-track"></span></label></div>
+            <div class="set-row">
+              <div><div>未完成待办 30 天内自动顺延至今天</div><div class="set-row-sub">昨日及近期未勾完的事务自动延续到今日，避免遗漏</div></div>
+              <label class="ios-switch"><input type="checkbox" id="sw-auto-rollover" /><span class="ios-switch-track"></span></label>
+            </div>
+          </div>
+
+          <div class="set-card">
+            <div class="set-card-hdr"><span>提示音效设置</span></div>
+            <div class="set-row">
+              <span>勾选完成待办提示音</span>
+              <select class="select" id="sel-done-sound" style="width:150px;padding:4px 7px;">
+                <option value="none">无</option>
+                <option value="ding" selected>清脆叮一声</option>
+                <option value="bubble">轻柔气泡音</option>
+              </select>
+            </div>
+            <div class="set-row">
+              <span>上课前 5 分钟 &amp; 待办提醒音</span>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <select class="select" id="sel-rem-sound" style="width:150px;padding:4px 7px;">
+                  <option value="chime" selected>清脆双音铃</option>
+                  <option value="dong">温润咚一声</option>
+                  <option value="wind">柔和风铃</option>
+                  <option value="none">静音</option>
+                </select>
+                <button class="btn" id="btn-preview-sound" style="padding:3px 9px;font-size:11px;">🔊 试听</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 设置子页 4：高级与快捷键（全局快捷键自定义 / 桌面驻留 / 提醒 / 开机自启 / 局域网） -->
+        <div id="set-panel-adv" style="display:none;flex-direction:column;gap:9px;">
+          <div class="set-card">
+            <div class="set-card-hdr"><span>全局快捷键自定义（点击右侧按键框后直接按组合键修改）</span></div>
+            <div class="set-row">
+              <div><div>显示 / 隐藏桌面日历</div><div class="set-row-sub">一键收起到托盘或从托盘呼出到桌面</div></div>
+              <div style="display:flex;gap:7px;align-items:center;">
+                <input type="text" readonly class="shortcut-key-box" id="hk-hide-key" value="Ctrl+Alt+H" title="点击后按下新快捷键" />
+                <label class="ios-switch"><input type="checkbox" id="sw-hk-hide" checked /><span class="ios-switch-track"></span></label>
+              </div>
+            </div>
+            <div class="set-row">
+              <div><div>隐藏日历内容（隐私防窥）</div><div class="set-row-sub">投屏或离开座位时快速模糊隐藏内容</div></div>
+              <div style="display:flex;gap:7px;align-items:center;">
+                <input type="text" readonly class="shortcut-key-box" id="hk-priv-key" value="Ctrl+Alt+F" title="点击后按下新快捷键" />
+                <label class="ios-switch"><input type="checkbox" id="sw-hk-priv" checked /><span class="ios-switch-track"></span></label>
+              </div>
+            </div>
+            <div class="set-row">
+              <div><div>锁定 / 解锁固定防误触</div><div class="set-row-sub">锁定窗口位置大小并防止误拖课程</div></div>
+              <div style="display:flex;gap:7px;align-items:center;">
+                <input type="text" readonly class="shortcut-key-box" id="hk-lock-key" value="Ctrl+Alt+L" title="点击后按下新快捷键" />
+                <label class="ios-switch"><input type="checkbox" id="sw-hk-lock" checked /><span class="ios-switch-track"></span></label>
+              </div>
+            </div>
+            <div class="set-row">
+              <div><div>快速新建待办便签</div><div class="set-row-sub">随时弹起待办事项录入弹窗</div></div>
+              <div style="display:flex;gap:7px;align-items:center;">
+                <input type="text" readonly class="shortcut-key-box" id="hk-memo-key" value="Ctrl+Alt+N" title="点击后按下新快捷键" />
+                <label class="ios-switch"><input type="checkbox" id="sw-hk-memo" checked /><span class="ios-switch-track"></span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="set-card">
+            <div class="set-card-hdr"><span>桌面驻留、提醒与局域网同步</span></div>
+            <div class="set-row">
+              <span>🔔 上课前 5 分钟 &amp; 待办到点卡片提醒</span>
+              <div style="display:flex;gap:7px;align-items:center;">
+                <button class="btn" id="btn-test-reminder" style="padding:2px 9px;font-size:11px;">试听提醒</button>
+                <label class="ios-switch"><input type="checkbox" id="opt-reminder" checked /><span class="ios-switch-track"></span></label>
+              </div>
+            </div>
+            <div class="set-row">
+              <span>🚀 Windows 开机自动启动（后台贴桌面运行）</span>
+              <label class="ios-switch"><input type="checkbox" id="opt-autolaunch" /><span class="ios-switch-track"></span></label>
+            </div>
+            <div class="desktop-only" style="flex-direction:column;gap:8px;width:100%;padding-top:4px;border-top:1px solid var(--border-soft);">
+              <div class="set-row">
+                <span>📌 贴桌面模式（不在任务栏占位，右下角托盘常驻）</span>
+                <label class="ios-switch"><input type="checkbox" id="opt-desktop-pin" checked /><span class="ios-switch-track"></span></label>
+              </div>
+              <div id="lan-url-box" class="hint-box" style="margin:0;"></div>
+              <div style="display:flex;justify-content:flex-end;">
+                <button class="btn btn-primary" id="btn-desktop-opt-save">保存桌面选项</button>
+              </div>
+            </div>
+          </div>
+
           <div class="hint-box" style="margin:0;font-size:11.5px;">
-            💡 点击右上角 <strong>✕</strong> 关闭界面仅隐藏到右下角系统托盘继续后台提醒；<strong>仅在右键托盘图标 →「彻底退出桌面日历」时才完全退出</strong>。可拖动四边调尺寸（最小 680×520），按 <strong>Ctrl+Alt+L</strong> 或右上角 <strong>🔒</strong> 固定防误触。
+            💡 点击右上角 <strong>✕</strong> 关闭界面仅隐藏到右下角系统托盘继续后台提醒；<strong>仅在右键托盘图标 →「彻底退出桌面日历」时才完全退出</strong>。可拖动四边调尺寸（最小 680×520）。
           </div>
         </div>
 
-        <!-- 设置子页 4：更新与关于 -->
-        <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
+        <!-- 设置子页 5：更新与关于 -->
+        <div id="set-panel-update" style="display:none;flex-direction:column;gap:10px;">
           <div class="hint-box" style="margin:0;">
-            当前版本：<strong id="upd-cur-ver">v1.5.5</strong><br/>
+            当前版本：<strong id="upd-cur-ver">v1.5.6</strong><br/>
             在线更新仅覆盖程序代码目录，个人课表、多班级课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
           </div>
           <div class="hint-box" style="margin:0;font-size:11.5px;">
-            <strong>💡 核心功能亮点</strong>：双图层时间轴叠加 · 个人/最多3班级课表双向同步 · 拖拽磁吸对调 · AI 一句话/Excel 作息识别 · 中国农历节假日日历。
+            <strong>💡 核心功能亮点</strong>：双图层时间轴叠加 · 个人/最多3班级课表双向同步 · 拖拽磁吸对调 · AI 一句话/Excel 作息识别 · 中国农历与二十四节气日历 · 完成提示音与未完成 30 天内自动顺延。
           </div>
           <div class="field">
             <label>GitHub 更新仓库（如 <code>ocean999/teacher-layer-calendar</code>）或自定义 <code>version.json</code> 地址</label>
@@ -491,8 +655,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <span style="font-size:12px;color:var(--text-muted);">教师双图层日历 · 免费开源自用版</span>
-        <button class="btn" data-close="modal-settings">关闭</button>
+        <button class="btn" id="btn-reset-defaults" style="color:var(--apple-blue);font-size:11.5px;">↺ 恢复默认设置</button>
+        <button class="btn btn-primary" data-close="modal-settings">关闭</button>
       </div>
     </div>
   </div>

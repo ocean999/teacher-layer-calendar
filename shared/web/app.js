@@ -19,12 +19,106 @@
   let activeWorkId = null;
   let activeTtTab = 'my'; // 'my' | 'class' | 'periods'
   let editingTtCourseId = null;
-  let activeSettingsTab = 'theme'; // 'theme' | 'cal' | 'desktop' | 'update'
+  let activeSettingsTab = 'theme'; // 'theme' | 'cal' | 'memo' | 'adv' | 'update'
   let activeImportTarget = 'class'; // 'my' | 'class'
   let latestUpdateInfo = null;
   let savedPersonalLayers = { showCourse: true, showWork: true };
   let pendingClassScope = null;
   const darkMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  const DEFAULT_UI_PREFS = {
+    theme: 'auto',
+    skinColor: '',
+    skinColorName: '默认',
+    frostedBlur: true,
+    bgAlpha: 72,
+    fontFamily: 'system',
+    fontSize: 13,
+    textMainColor: '',
+    todayAccent: '#007aff',
+    restColBg: '',
+    holidayColor: '#e11d48',
+    solarTermColor: '#16a34a',
+    autoLaunch: false,
+    desktopPin: true,
+    reminderEnabled: true,
+    magnetSnap: true,
+    showEvening: false,
+    showWeekend: false,
+    showWeekNum: true,
+    restWeekdays: [6, 7],
+    showStatutory: true,
+    showFestival: true,
+    showLunar: true,
+    showSolarTerm: true,
+    showYiJi: false,
+    bulletStyle: 'none',
+    showDoneWork: true,
+    doneToBottom: true,
+    autoRollover: false,
+    doneSound: 'ding',
+    remSound: 'chime',
+    hotkeys: {
+      hide: { key: 'Ctrl+Alt+H', enabled: true },
+      priv: { key: 'Ctrl+Alt+F', enabled: true },
+      lock: { key: 'Ctrl+Alt+L', enabled: true },
+      memo: { key: 'Ctrl+Alt+N', enabled: true },
+    },
+  };
+
+  const FONT_STACK_MAP = {
+    system: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif',
+    yahei: '"Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif',
+    kaiti: '"KaiTi", "STKaiti", "LXGW WenKai", serif',
+    songti: '"SimSun", "STSong", "Noto Serif SC", serif',
+    mono: '"JetBrains Mono", "Cascadia Mono", "Consolas", "Microsoft YaHei UI", monospace',
+  };
+
+  function ensureUiPrefs() {
+    if (!appState) return;
+    if (!appState.config) appState.config = {};
+    const cur = appState.config.ui || {};
+    const defHk = DEFAULT_UI_PREFS.hotkeys;
+    const rawHk = cur.hotkeys || {};
+    appState.config.ui = {
+      ...DEFAULT_UI_PREFS,
+      ...cur,
+      restWeekdays: Array.isArray(cur.restWeekdays) ? cur.restWeekdays : DEFAULT_UI_PREFS.restWeekdays.slice(),
+      hotkeys: {
+        hide: { ...defHk.hide, ...(rawHk.hide || {}) },
+        priv: { ...defHk.priv, ...(rawHk.priv || {}) },
+        lock: { ...defHk.lock, ...(rawHk.lock || {}) },
+        memo: { ...defHk.memo, ...(rawHk.memo || {}) },
+      },
+    };
+    return appState.config.ui;
+  }
+
+  function formatWorkPrefix(idx) {
+    const bs = appState?.config?.ui?.bulletStyle || 'none';
+    if (bs === 'number') return `${idx + 1}. `;
+    if (bs === 'dot') return '• ';
+    return '';
+  }
+
+  function getVisibleWorksForDate(ds) {
+    const ui = appState?.config?.ui || DEFAULT_UI_PREFS;
+    const todayStr = fmtDate(new Date());
+    let arr = (appState?.data?.works || []).filter(w => {
+      if (w.deleted) return false;
+      if (ui.showDoneWork === false && w.done) return false;
+      if (w.date === ds) return true;
+      if (ui.autoRollover && !w.done && ds === todayStr && w.date < todayStr) {
+        const diffDays = Math.round((parseDate(todayStr) - parseDate(w.date)) / 86400000);
+        return diffDays >= 1 && diffDays <= 30;
+      }
+      return false;
+    });
+    if (ui.doneToBottom !== false) {
+      arr = arr.slice().sort((a, b) => (Number(!!a.done) - Number(!!b.done)) || (toMin(a.start) - toMin(b.start)));
+    }
+    return arr;
+  }
 
   function getLunarParts(d) {
     try {
@@ -92,20 +186,43 @@
     '2027-10-05': { type: 'rest', name: '国庆休' }, '2027-10-06': { type: 'rest', name: '国庆休' }, '2027-10-07': { type: 'rest', name: '国庆休' },
   };
 
+  const SOLAR_TERM_NAMES = ['小寒', '大寒', '立春', '雨水', '惊蛰', '春分', '清明', '谷雨', '立夏', '小满', '芒种', '夏至', '小暑', '大暑', '立秋', '处暑', '白露', '秋分', '寒露', '霜降', '立冬', '小雪', '大雪', '冬至'];
+  const SOLAR_TERM_INFO = [0, 21208, 42467, 63836, 85337, 107014, 128867, 150921, 173149, 195551, 218072, 240693, 263343, 285989, 308563, 331033, 353350, 375494, 397447, 419210, 440795, 462224, 483532, 504758];
+  function getSolarTerm(d) {
+    const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+    const base = Date.UTC(1900, 0, 6, 2, 5);
+    for (let i = 0; i < 2; i++) {
+      const idx = m * 2 + i;
+      const off = 31556925974.7 * (y - 1900) + SOLAR_TERM_INFO[idx] * 60000;
+      const dt = new Date(base + off);
+      if (dt.getUTCDate() === day) return SOLAR_TERM_NAMES[idx];
+    }
+    return '';
+  }
+
+  const YI_POOL = ['备课批改', '教研交流', '家校沟通', '整理错题', '课件制作', '复盘本周'];
+  const JI_POOL = ['熬夜加班', '拖延批阅', '临阵改表', '久坐不歇', '遗漏通知', '堆积待办'];
+  function getYiJiText(d) {
+    const seed = Math.abs(Math.floor(d.getTime() / 86400000));
+    return `宜：${YI_POOL[seed % YI_POOL.length]} · ${YI_POOL[(seed + 2) % YI_POOL.length]} ｜ 忌：${JI_POOL[(seed + 1) % JI_POOL.length]}`;
+  }
+
   function getCnCalendarMeta(d) {
+    const ui = appState?.config?.ui || DEFAULT_UI_PREFS;
     const ds = fmtDate(d);
     const md = ds.slice(5);
     const lp = getLunarParts(d);
     const tomLp = getLunarParts(addDays(d, 1));
     const solarFest = { '01-01': '元旦', '05-01': '劳动节', '06-01': '儿童节', '09-10': '教师节', '10-01': '国庆节' }[md]
       || ((d.getMonth() === 3 && d.getDate() === 5) ? '清明' : '');
+    const solarTerm = ui.showSolarTerm !== false ? getSolarTerm(d) : '';
     let lunarFest = '';
     if (lp && !lp.isLeap) {
       if (tomLp && !tomLp.isLeap && tomLp.m === 1 && tomLp.d === 1) lunarFest = '除夕';
       else lunarFest = ({ '1-1': '春节', '1-15': '元宵', '5-5': '端午', '7-7': '七夕', '8-15': '中秋', '9-9': '重阳', '12-8': '腊八' })[`${lp.m}-${lp.d}`] || '';
     }
     const dayOv = appState?.data?.dayOverrides && appState.data.dayOverrides[ds];
-    const stat = CN_STATUTORY_MAP[ds];
+    const stat = ui.showStatutory !== false ? CN_STATUTORY_MAP[ds] : null;
     let tagType = null, festLabel = '';
     if (dayOv) {
       tagType = dayOv.type === 'holiday' ? 'rest' : 'work';
@@ -114,21 +231,33 @@
       tagType = stat.type;
       festLabel = stat.name;
     }
-    const subText = festLabel && festLabel !== '补班'
+    const festPart = ui.showFestival !== false ? (lunarFest || solarFest) : '';
+    const lunarPart = ui.showLunar !== false && lp ? lp.short : '';
+    const subText = (festLabel && festLabel !== '补班')
       ? festLabel
-      : (lunarFest || solarFest || (lp ? lp.short : ''));
-    return { ds, tagType, festLabel, subText, isFest: !!(festLabel || lunarFest || solarFest), isWeekend: d.getDay() === 0 || d.getDay() === 6 };
+      : (festPart || solarTerm || lunarPart || '');
+    const yiji = ui.showYiJi ? getYiJiText(d) : '';
+    const isoWd = getIsoWeekday(d);
+    const restList = Array.isArray(ui.restWeekdays) ? ui.restWeekdays : [6, 7];
+    return {
+      ds, tagType, festLabel, solarTerm, festPart, lunarPart, subText, yiji,
+      isFest: !!(festLabel || festPart || solarTerm),
+      isWeekend: d.getDay() === 0 || d.getDay() === 6,
+      isRestDay: restList.includes(isoWd),
+    };
   }
 
   function updateTopbarDateLabel() {
     const titleEl = document.getElementById('topbar-full-date');
     const chipEl = document.getElementById('topbar-week-chip');
     const d = anchorDate;
-    const lunar = formatLunarText(d);
+    const ui = appState?.config?.ui || DEFAULT_UI_PREFS;
+    const lunar = ui.showLunar !== false ? formatLunarText(d) : '';
     if (titleEl) {
       titleEl.textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${WEEKDAYS_FULL[d.getDay()]}${lunar ? ' ' + lunar : ''}`;
     }
     if (chipEl && appState) {
+      chipEl.style.display = ui.showWeekNum !== false ? '' : 'none';
       const mon = getMondayOf(d);
       const wkNo = getWeekNumber(fmtDate(mon));
       if (currentView === 'month') {
@@ -593,8 +722,31 @@
     const bgAlpha = typeof ui.bgAlpha === 'number' ? Math.max(0, Math.min(98, ui.bgAlpha)) : 72;
     const bgStyle = bgAlpha <= 15 ? 'transparent' : bgAlpha <= 52 ? 'translucent' : bgAlpha <= 85 ? 'frosted' : 'solid';
     const bgStyleLabels = { transparent: '全透明', translucent: '半透明', frosted: '磨砂玻璃', solid: '实色' };
-    document.documentElement.setAttribute('data-bg-style', bgStyle);
-    document.documentElement.style.setProperty('--bg-alpha', String(bgAlpha / 100));
+    rootEl.setAttribute('data-bg-style', bgStyle);
+    rootEl.style.setProperty('--bg-alpha', String(bgAlpha / 100));
+    rootEl.setAttribute('data-frosted', ui.frostedBlur === false ? 'off' : 'on');
+    rootEl.style.setProperty('--app-font', FONT_STACK_MAP[ui.fontFamily] || FONT_STACK_MAP.system);
+    rootEl.style.setProperty('--app-font-size', `${Number(ui.fontSize) || 13}px`);
+    if (ui.textMainColor) rootEl.style.setProperty('--text-main', ui.textMainColor);
+    else rootEl.style.removeProperty('--text-main');
+
+    const accRgb = hexToRgb(ui.todayAccent);
+    if (accRgb && ui.todayAccent !== DEFAULT_UI_PREFS.todayAccent) {
+      rootEl.style.setProperty('--today-accent', ui.todayAccent);
+      rootEl.style.setProperty('--today-col-bg', `rgba(${accRgb.r}, ${accRgb.g}, ${accRgb.b}, 0.06)`);
+      rootEl.style.setProperty('--today-hdr-bg', `rgba(${accRgb.r}, ${accRgb.g}, ${accRgb.b}, 0.14)`);
+    } else {
+      rootEl.style.removeProperty('--today-accent');
+      rootEl.style.removeProperty('--today-col-bg');
+      rootEl.style.removeProperty('--today-hdr-bg');
+    }
+    const restRgb = hexToRgb(ui.restColBg);
+    if (restRgb && ui.restColBg) rootEl.style.setProperty('--rest-col-bg', `rgba(${restRgb.r}, ${restRgb.g}, ${restRgb.b}, 0.28)`);
+    else rootEl.style.removeProperty('--rest-col-bg');
+    if (ui.holidayColor && ui.holidayColor !== DEFAULT_UI_PREFS.holidayColor) rootEl.style.setProperty('--holiday-color', ui.holidayColor);
+    else rootEl.style.removeProperty('--holiday-color');
+    if (ui.solarTermColor && ui.solarTermColor !== DEFAULT_UI_PREFS.solarTermColor) rootEl.style.setProperty('--solar-term-color', ui.solarTermColor);
+    else rootEl.style.removeProperty('--solar-term-color');
 
     document.getElementById('chk-magnet').checked = ui.magnetSnap !== false;
     document.getElementById('rng-course-opacity').value = ui.courseOpacity ?? 78;
@@ -603,6 +755,8 @@
     if (bgAlphaSet) bgAlphaSet.value = bgAlpha;
     const autoEl = document.getElementById('opt-autolaunch');
     if (autoEl) autoEl.checked = !!ui.autoLaunch;
+    const pinEl = document.getElementById('opt-desktop-pin');
+    if (pinEl) pinEl.checked = ui.desktopPin !== false;
     const remEl = document.getElementById('opt-reminder');
     if (remEl) remEl.checked = ui.reminderEnabled !== false;
     document.querySelectorAll('[data-bg-style]').forEach(btn => {
@@ -610,6 +764,45 @@
     });
     const readout = document.getElementById('bg-alpha-readout');
     if (readout) readout.textContent = `${bgAlpha}% · ${bgStyleLabels[bgStyle]}`;
+
+    const effThemeForPicker = skinRgb ? (skinRgb.lum < 0.52 ? 'dark' : 'light') : resolvedTheme;
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+    setChk('sw-frosted-blur', ui.frostedBlur !== false);
+    setVal('sel-font-family', ui.fontFamily || 'system');
+    setVal('sel-font-scale', String(ui.fontSize || 13));
+    setVal('col-text-main', ui.textMainColor || (effThemeForPicker === 'dark' ? '#f8fafc' : '#0f172a'));
+    setVal('col-today-accent', ui.todayAccent || DEFAULT_UI_PREFS.todayAccent);
+    setVal('col-rest-bg', ui.restColBg || '#eef2ff');
+    setVal('col-holiday-text', ui.holidayColor || DEFAULT_UI_PREFS.holidayColor);
+    setVal('col-term-text', ui.solarTermColor || DEFAULT_UI_PREFS.solarTermColor);
+
+    setChk('sw-show-weeknum', ui.showWeekNum !== false);
+    setChk('sw-show-rest', !!ui.showWeekend);
+    const restList = Array.isArray(ui.restWeekdays) ? ui.restWeekdays : [6, 7];
+    document.querySelectorAll('[data-rest-wd]').forEach(chk => { chk.checked = restList.includes(Number(chk.dataset.restWd)); });
+    setChk('sw-show-stat', ui.showStatutory !== false);
+    setChk('sw-show-fest', ui.showFestival !== false);
+    setChk('sw-show-lunar', ui.showLunar !== false);
+    setChk('sw-show-solarterm', ui.showSolarTerm !== false);
+    setChk('sw-show-yiji', !!ui.showYiJi);
+
+    document.querySelectorAll('[data-bullet-style]').forEach(b => b.classList.toggle('active', b.dataset.bulletStyle === (ui.bulletStyle || 'none')));
+    setChk('sw-show-done-work', ui.showDoneWork !== false);
+    setChk('sw-done-bottom', ui.doneToBottom !== false);
+    setChk('sw-auto-rollover', !!ui.autoRollover);
+    setVal('sel-done-sound', ui.doneSound || 'ding');
+    setVal('sel-rem-sound', ui.remSound || 'chime');
+
+    const hk = ui.hotkeys || DEFAULT_UI_PREFS.hotkeys;
+    setVal('hk-hide-key', hk.hide?.key || 'Ctrl+Alt+H');
+    setChk('sw-hk-hide', hk.hide?.enabled !== false);
+    setVal('hk-priv-key', hk.priv?.key || 'Ctrl+Alt+F');
+    setChk('sw-hk-priv', hk.priv?.enabled !== false);
+    setVal('hk-lock-key', hk.lock?.key || 'Ctrl+Alt+L');
+    setChk('sw-hk-lock', hk.lock?.enabled !== false);
+    setVal('hk-memo-key', hk.memo?.key || 'Ctrl+Alt+N');
+    setChk('sw-hk-memo', hk.memo?.enabled !== false);
 
     const btnEvening = document.getElementById('btn-toggle-evening');
     const btnWeekend = document.getElementById('btn-toggle-weekend');
@@ -628,10 +821,11 @@
     document.body.classList.toggle('ui-locked', isUiLocked);
     const lockBtn = document.getElementById('btn-lock');
     const lockSvg = document.getElementById('lock-svg');
+    const lockKeyLabel = appState?.config?.ui?.hotkeys?.lock?.key || 'Ctrl+Alt+L';
     if (lockBtn) {
       lockBtn.classList.toggle('btn-lock-active', isUiLocked);
       lockBtn.title = isUiLocked
-        ? '当前已锁定防误触，点击立即解锁（或按 Ctrl+Alt+L）'
+        ? `当前已锁定防误触，点击立即解锁（或按 ${lockKeyLabel}）`
         : '锁定固定防误触（锁定后窗口不可拖动缩放，课表与编辑按钮禁用）';
     }
     if (lockSvg) {
@@ -700,6 +894,7 @@
   function render() {
     if (!appState) return;
     ensureClassTimetables();
+    ensureUiPrefs();
     applyUiControlsFromState();
     applyLockUi(isUiLocked);
     refreshSyncBadgeFromState();
@@ -750,9 +945,16 @@
     const headerCells = `<div class="timeline-header-cell" id="time-axis-hdr" title="双击智能批量排作息时间" style="color:var(--text-muted);">时间 ⚡</div>` +
       dates.map(d => {
         const ds = fmtDate(d), isTd = ds === todayStr;
+        const meta = getCnCalendarMeta(d);
         const dayOv = appState.data.dayOverrides && appState.data.dayOverrides[ds];
-        const badge = dayOv ? (dayOv.type === 'holiday' ? `<span class="day-badge holiday">休</span>` : `<span class="day-badge makeup">${escapeHtml(dayOv.label || '补')}</span>`) : '';
-        return `<div class="timeline-header-cell ${isTd ? 'today' : ''}" data-header-date="${ds}" title="点击设置法定节假日或周末补课（双击切日/周视图）" style="cursor:pointer;">${WEEKDAYS_CN[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}${isTd ? ' · 今天' : ''}${badge}</div>`;
+        const badge = dayOv
+          ? (dayOv.type === 'holiday' ? `<span class="day-badge holiday">休</span>` : `<span class="day-badge makeup">${escapeHtml(dayOv.label || '补')}</span>`)
+          : (meta.tagType === 'rest' ? `<span class="day-badge holiday">休</span>` : (meta.tagType === 'work' ? `<span class="day-badge makeup">班</span>` : ''));
+        const termTag = meta.solarTerm ? `<span class="hdr-term-tag">${escapeHtml(meta.solarTerm)}</span>` : '';
+        const festTag = (!meta.solarTerm && meta.festPart) ? `<span class="hdr-fest-tag">${escapeHtml(meta.festPart)}</span>` : '';
+        const lunarTag = (!termTag && !festTag && meta.lunarPart) ? `<span class="hdr-lunar-sub">${escapeHtml(meta.lunarPart)}</span>` : '';
+        const tip = `点击设置法定节假日或周末补课（双击切日/周视图）${meta.yiji ? '\n' + meta.yiji : ''}`;
+        return `<div class="timeline-header-cell ${isTd ? 'today' : ''}" data-header-date="${ds}" title="${escapeAttr(tip)}" style="cursor:pointer;">${WEEKDAYS_CN[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}${isTd ? ' · 今天' : ''}${lunarTag}${termTag}${festTag}${badge}</div>`;
       }).join('');
 
     // 左侧时间刻度 + 节次轻标签 + 苹果日历红色胶囊当前时间
@@ -810,6 +1012,7 @@
     const dayColsHtml = dates.map(d => {
       const ds = fmtDate(d);
       const isTd = ds === todayStr;
+      const meta = getCnCalendarMeta(d);
       const dayOv = appState.data.dayOverrides && appState.data.dayOverrides[ds];
       let colInner = linesHtml;
       if (dayOv && dayOv.type === 'holiday') {
@@ -856,12 +1059,12 @@
               ${height >= 26 ? `<div class="course-time">${c.start}-${c.end}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>` : ''}
             </div>`;
         });
-        return `<div class="day-col ${isTd ? 'today-col' : ''}" data-col-date="${ds}" style="height:${canvasHeight}px">${colInner}</div>`;
+        return `<div class="day-col ${isTd ? 'today-col' : ''} ${meta.isRestDay ? 'rest-col' : ''}" data-col-date="${ds}" style="height:${canvasHeight}px">${colInner}</div>`;
       }
 
       // ===== 分支 2：个人双图层模式（底层我的课表 + 顶层干活叠加） =====
       const { activeList, ghostList } = getEffectiveCoursesForDate(ds, 'my');
-      const dayWorks = (appState.data.works || []).filter(w => !w.deleted && w.date === ds);
+      const dayWorks = getVisibleWorksForDate(ds);
 
       if (showCourse) {
         ghostList.forEach(g => {
@@ -893,12 +1096,14 @@
       }
 
       if (showWork) {
-        dayWorks.forEach(w => {
+        dayWorks.forEach((w, wIdx) => {
           const s = toMin(w.start), e = toMin(w.end);
           if (e <= range.start || s >= range.end) return;
+          const isOverlap = showCourse && activeList.some(c => Math.max(s, toMin(c.start)) < Math.min(e, toMin(c.end)));
+          const isRolled = w.date !== ds;
+          const prefix = formatWorkPrefix(wIdx);
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
           const height = Math.max(28, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
-          const isOverlap = showCourse && activeList.some(c => Math.max(s, toMin(c.start)) < Math.min(e, toMin(c.end)));
           const cls = ['work-block'];
           if (w.urgent) cls.push('urgent');
           if (isOverlap) cls.push('overlap');
@@ -907,7 +1112,7 @@
             <div class="${cls.join(' ')}" style="top:${top}px;height:${height}px;opacity:${opWork}" data-work-id="${w.id}">
               <div class="work-header">
                 <span class="work-check" data-toggle-done="${w.id}">${w.done ? '☑' : '☐'}</span>
-                <span class="work-title-text">${isOverlap ? '⚡ ' : ''}${escapeHtml(w.title)}</span>
+                <span class="work-title-text">${isRolled ? '<span class="work-rollover-tag">顺延</span>' : ''}${isOverlap ? '⚡ ' : ''}${prefix}${escapeHtml(w.title)}</span>
               </div>
               ${height >= 26 ? `<div class="work-time">${w.start}-${w.end}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>` : ''}
               <div class="work-resize-handle" data-resize-work="${w.id}" title="上下拖拉调整时长"></div>
@@ -915,7 +1120,7 @@
         });
       }
 
-      return `<div class="day-col ${isTd ? 'today-col' : ''}" data-col-date="${ds}" style="height:${canvasHeight}px">${colInner}</div>`;
+      return `<div class="day-col ${isTd ? 'today-col' : ''} ${meta.isRestDay ? 'rest-col' : ''}" data-col-date="${ds}" style="height:${canvasHeight}px">${colInner}</div>`;
     }).join('');
 
     container.innerHTML = `
@@ -954,13 +1159,14 @@
       for (let dIdx = 0; dIdx < colCount; dIdx++) {
         const d = addDays(startMon, w * 7 + dIdx), ds = fmtDate(d);
         const isTd = ds === todayStr;
+        const meta = getCnCalendarMeta(d);
         const { activeList } = getEffectiveCoursesForDate(ds, homeroomOn ? 'class' : 'my');
         const visibleCourses = showEvening
           ? activeList
           : activeList.filter(c => toMin(c.start) < 18 * 60);
         const works = homeroomOn
           ? []
-          : (appState.data.works || []).filter(wk => !wk.deleted && wk.date === ds && (showEvening || toMin(wk.start) < 18 * 60));
+          : getVisibleWorksForDate(ds).filter(wk => showEvening || toMin(wk.start) < 18 * 60);
 
         // 左侧微型纵向按时间比例时间轴
         let miniBars = '';
@@ -992,8 +1198,9 @@
         // 右侧带时间的紧凑日程条目
         const pills = [];
         if (!homeroomOn && ui.showWork !== false) {
-          works.slice(0, 2).forEach(wk => {
-            pills.push(`<div class="month-pill work ${wk.urgent ? 'urgent' : ''}">${wk.start} ${escapeHtml(wk.title)}</div>`);
+          works.slice(0, 2).forEach((wk, idx) => {
+            const isRolled = wk.date !== ds;
+            pills.push(`<div class="month-pill work ${wk.urgent ? 'urgent' : ''}">${isRolled ? '<span class="work-rollover-tag">顺延</span>' : ''}${formatWorkPrefix(idx)}${wk.start} ${escapeHtml(wk.title)}</div>`);
           });
         }
         if (homeroomOn || ui.showCourse !== false) {
@@ -1007,12 +1214,17 @@
         }
 
         const dayOv = appState.data.dayOverrides && appState.data.dayOverrides[ds];
-        const mBadge = dayOv ? (dayOv.type === 'holiday' ? `<span class="day-badge holiday">休</span>` : `<span class="day-badge makeup">${escapeHtml(dayOv.label || '补')}</span>`) : '';
+        const mBadge = dayOv
+          ? (dayOv.type === 'holiday' ? `<span class="day-badge holiday">休</span>` : `<span class="day-badge makeup">${escapeHtml(dayOv.label || '补')}</span>`)
+          : (meta.tagType === 'rest' ? `<span class="day-badge holiday">休</span>` : (meta.tagType === 'work' ? `<span class="day-badge makeup">班</span>` : ''));
+        const subTag = meta.solarTerm
+          ? `<span style="font-size:9.5px;color:var(--solar-term-color);font-weight:700;">${escapeHtml(meta.solarTerm)}</span>`
+          : (meta.festPart ? `<span style="font-size:9.5px;color:var(--holiday-color);font-weight:700;">${escapeHtml(meta.festPart)}</span>` : `<span style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(meta.lunarPart)}</span>`);
         cells.push(`
-          <div class="month-cell ${d.getMonth() !== m ? 'other-month' : ''} ${isTd ? 'today' : ''}" data-month-date="${ds}">
+          <div class="month-cell ${d.getMonth() !== m ? 'other-month' : ''} ${isTd ? 'today' : ''} ${meta.isRestDay ? 'rest-day-cell' : ''}" data-month-date="${ds}" title="${escapeAttr(meta.yiji || '')}">
             <div class="month-cell-top">
-              <span>${d.getDate()}日${mBadge}</span>
-              <span style="font-size:10px;color:${isTd ? 'var(--apple-blue)' : 'var(--text-muted)'};">${isTd ? '今天' : `${visibleCourses.length}课${works.length ? '·' + works.length + '活' : ''}`}</span>
+              <span>${d.getDate()}日${mBadge} ${subTag}</span>
+              <span style="font-size:10px;color:${isTd ? 'var(--today-accent)' : 'var(--text-muted)'};">${isTd ? '今天' : `${visibleCourses.length}课${works.length ? '·' + works.length + '活' : ''}`}</span>
             </div>
             <div class="month-cell-body">
               <div class="mini-axis-track" title="当日时间轴缩略（蓝=上课，橙=干活，红=撞课）">${miniBars}</div>
@@ -1079,7 +1291,13 @@
       el.addEventListener('click', async (e) => {
         e.stopPropagation();
         const w = (appState.data.works || []).find(x => x.id === el.dataset.toggleDone);
-        if (w) { w.done = !w.done; w.updatedAt = Date.now(); render(); await persistAndScheduleSync(); }
+        if (w) {
+          w.done = !w.done;
+          w.updatedAt = Date.now();
+          if (w.done && appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
+          render();
+          await persistAndScheduleSync();
+        }
       });
     });
 
@@ -1884,15 +2102,17 @@
   }
 
   function switchSettingsTab(tab) {
-    activeSettingsTab = ['theme', 'cal', 'desktop', 'update'].includes(tab) ? tab : 'theme';
+    const mapped = tab === 'desktop' ? 'adv' : tab;
+    activeSettingsTab = ['theme', 'cal', 'memo', 'adv', 'update'].includes(mapped) ? mapped : 'theme';
     document.querySelectorAll('[data-set-tab]').forEach(b => b.classList.toggle('active', b.dataset.setTab === activeSettingsTab));
-    ['theme', 'cal', 'desktop', 'update'].forEach(t => {
+    ['theme', 'cal', 'memo', 'adv', 'update'].forEach(t => {
       const el = document.getElementById(`set-panel-${t}`);
       if (el) el.style.display = t === activeSettingsTab ? 'flex' : 'none';
     });
   }
 
   async function openSettingsModal(tab = 'theme') {
+    ensureUiPrefs();
     const ui = appState.config.ui;
     const uCfg = appState.config.updater || {};
 
@@ -1910,6 +2130,7 @@
         ? `📱 <strong>手机同 Wi-Fi 访问地址</strong>：<code>${lan.urls.join(' / ')}</code>`
         : '未检测到局域网 IP。';
     }
+    applyUiControlsFromState();
     switchSettingsTab(tab);
     openModal('modal-settings');
   }
@@ -2025,21 +2246,25 @@
   }
 
   function renderMemoMgrList() {
+    const ui = appState?.config?.ui || DEFAULT_UI_PREFS;
     const list = (appState.data.works || [])
       .filter(w => !w.deleted)
       .filter(w => memoMgrFilter === 'all' ? true : (memoMgrFilter === 'done' ? w.done : !w.done))
-      .sort((a, b) => a.date.localeCompare(b.date) || toMin(a.start) - toMin(b.start));
+      .sort((a, b) => {
+        if (ui.doneToBottom !== false && !!a.done !== !!b.done) return Number(!!a.done) - Number(!!b.done);
+        return a.date.localeCompare(b.date) || toMin(a.start) - toMin(b.start);
+      });
     const box = document.getElementById('memo-mgr-list');
     if (!list.length) {
       box.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:18px;">当前筛选下暂无便签/干活记录</div>';
       return;
     }
-    box.innerHTML = list.map(w => `
+    box.innerHTML = list.map((w, idx) => `
       <div class="mgr-row">
         <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
           <button class="btn" style="padding:2px 7px;" data-mm-toggle="${w.id}">${w.done ? '☑' : '☐'}</button>
           <div style="min-width:0;flex:1;">
-            <div style="font-weight:600;${w.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${w.urgent ? '🔴 ' : ''}${escapeHtml(w.title)}</div>
+            <div style="font-weight:600;${w.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${w.urgent ? '🔴 ' : ''}${formatWorkPrefix(idx)}${escapeHtml(w.title)}</div>
             <div style="font-size:11px;color:var(--text-muted);">${w.date} ${w.start}-${w.end}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>
           </div>
         </div>
@@ -2051,7 +2276,12 @@
 
     box.querySelectorAll('[data-mm-toggle]').forEach(b => b.addEventListener('click', async () => {
       const w = appState.data.works.find(x => x.id === b.dataset.mmToggle);
-      if (w) { w.done = !w.done; w.updatedAt = Date.now(); renderMemoMgrList(); render(); await persistAndScheduleSync(); }
+      if (w) {
+        w.done = !w.done;
+        w.updatedAt = Date.now();
+        if (w.done && appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
+        renderMemoMgrList(); render(); await persistAndScheduleSync();
+      }
     }));
     box.querySelectorAll('[data-mm-edit]').forEach(b => b.addEventListener('click', () => {
       closeModal('modal-memo-mgr');
@@ -2734,11 +2964,15 @@
         const badge = meta.tagType === 'rest'
           ? '<span class="cn-tag rest">休</span>'
           : (meta.tagType === 'work' ? '<span class="cn-tag work">班</span>' : '');
+        const tip = `${meta.ds} ${getLunarParts(d)?.full || ''}${meta.festLabel ? ' · ' + meta.festLabel : ''}${meta.solarTerm ? ' · ' + meta.solarTerm : ''}${meta.yiji ? '\n' + meta.yiji : ''}`;
+        const cnSubHtml = meta.solarTerm && meta.subText === meta.solarTerm
+          ? `<span style="color:var(--solar-term-color);font-weight:700;">${escapeHtml(meta.subText)}</span>`
+          : escapeHtml(meta.subText);
         html += `
-          <div class="${cls.join(' ')}" data-cncal-jump="${meta.ds}" title="${meta.ds} ${getLunarParts(d)?.full || ''}${meta.festLabel ? ' · ' + meta.festLabel : ''}">
+          <div class="${cls.join(' ')}" data-cncal-jump="${meta.ds}" title="${escapeAttr(tip)}">
             ${badge}
             <div class="cn-solar">${d.getDate()}</div>
-            <div class="cn-lunar ${meta.isFest ? 'is-fest' : ''}">${escapeHtml(meta.subText)}</div>
+            <div class="cn-lunar ${meta.isFest ? 'is-fest' : ''}">${cnSubHtml}</div>
           </div>`;
       }
       gridEl.innerHTML = html;
@@ -2800,6 +3034,14 @@
       setTimeout(() => document.getElementById('ai-nl-input')?.focus(), 40);
     });
 
+    function togglePrivacyMask() {
+      isPrivacyMasked = !isPrivacyMasked;
+      document.body.classList.toggle('privacy-masked', isPrivacyMasked);
+      const pf = document.getElementById('menu-privacy-flag');
+      if (pf) pf.textContent = isPrivacyMasked ? '🔒' : '🔓';
+      showToast(isPrivacyMasked ? '🔒 已开启隐私保护：日历内容已模糊隐藏' : '🔓 已恢复显示日历内容');
+    }
+
     // ⚙ 统一菜单动作绑定（课表与待办 / 查找与数据 / 系统）
     document.querySelectorAll('[data-plugin-act]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -2826,11 +3068,7 @@
         } else if (act === 'sys-settings' || act === 'theme') {
           openSettingsModal('theme');
         } else if (act === 'privacy-mask') {
-          isPrivacyMasked = !isPrivacyMasked;
-          document.body.classList.toggle('privacy-masked', isPrivacyMasked);
-          const pf = document.getElementById('menu-privacy-flag');
-          if (pf) pf.textContent = isPrivacyMasked ? '🔒' : '🔓';
-          showToast(isPrivacyMasked ? '🔒 已开启隐私保护：日历内容已模糊隐藏' : '🔓 已恢复显示日历内容');
+          togglePrivacyMask();
         } else if (act === 'export') {
           exportAllJsonBackup();
         } else if (act === 'print') {
@@ -3042,6 +3280,168 @@
       activeTtTab = appState.config.ui.homeroomMode ? 'class' : 'my';
       renderTimetableManager();
       openModal('modal-timetable');
+    });
+
+    // 新增偏好设置绑定：毛玻璃、字体字号配色、周数/休息日/节气/黄历、待办规则与音效、全局快捷键与恢复默认
+    document.getElementById('sw-frosted-blur')?.addEventListener('change', async (e) => {
+      appState.config.ui.frostedBlur = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+      showToast(appState.config.ui.frostedBlur ? '🫧 已开启毛玻璃模糊特效' : '已关闭毛玻璃模糊特效');
+    });
+    document.getElementById('sel-font-family')?.addEventListener('change', async (e) => {
+      appState.config.ui.fontFamily = e.target.value;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sel-font-scale')?.addEventListener('change', async (e) => {
+      appState.config.ui.fontSize = Number(e.target.value) || 13;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('col-text-main')?.addEventListener('input', async (e) => {
+      appState.config.ui.textMainColor = e.target.value;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('col-today-accent')?.addEventListener('input', async (e) => {
+      appState.config.ui.todayAccent = e.target.value;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('col-rest-bg')?.addEventListener('input', async (e) => {
+      appState.config.ui.restColBg = e.target.value;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('col-holiday-text')?.addEventListener('input', async (e) => {
+      appState.config.ui.holidayColor = e.target.value;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('col-term-text')?.addEventListener('input', async (e) => {
+      appState.config.ui.solarTermColor = e.target.value;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('btn-reset-colors')?.addEventListener('click', async () => {
+      Object.assign(appState.config.ui, {
+        textMainColor: '',
+        todayAccent: DEFAULT_UI_PREFS.todayAccent,
+        restColBg: '',
+        holidayColor: DEFAULT_UI_PREFS.holidayColor,
+        solarTermColor: DEFAULT_UI_PREFS.solarTermColor,
+      });
+      render(); await persistAndScheduleSync(false);
+      showToast('已还原全部默认字体与重点配色');
+    });
+
+    document.getElementById('sw-show-weeknum')?.addEventListener('change', async (e) => {
+      appState.config.ui.showWeekNum = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-show-rest')?.addEventListener('change', async (e) => {
+      appState.config.ui.showWeekend = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.querySelectorAll('[data-rest-wd]').forEach(chk => chk.addEventListener('change', async () => {
+      appState.config.ui.restWeekdays = Array.from(document.querySelectorAll('[data-rest-wd]:checked')).map(x => Number(x.dataset.restWd));
+      render(); await persistAndScheduleSync(false);
+    }));
+    document.getElementById('sw-show-stat')?.addEventListener('change', async (e) => {
+      appState.config.ui.showStatutory = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-show-fest')?.addEventListener('change', async (e) => {
+      appState.config.ui.showFestival = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-show-lunar')?.addEventListener('change', async (e) => {
+      appState.config.ui.showLunar = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-show-solarterm')?.addEventListener('change', async (e) => {
+      appState.config.ui.showSolarTerm = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-show-yiji')?.addEventListener('change', async (e) => {
+      appState.config.ui.showYiJi = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+      showToast(appState.config.ui.showYiJi ? '💡 悬停日期表头、月历或农历格即可查看今日宜忌' : '已关闭黄历忌宜提示');
+    });
+
+    document.querySelectorAll('[data-bullet-style]').forEach(btn => btn.addEventListener('click', async () => {
+      appState.config.ui.bulletStyle = btn.dataset.bulletStyle;
+      render(); await persistAndScheduleSync(false);
+    }));
+    document.getElementById('sw-show-done-work')?.addEventListener('change', async (e) => {
+      appState.config.ui.showDoneWork = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-done-bottom')?.addEventListener('change', async (e) => {
+      appState.config.ui.doneToBottom = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-auto-rollover')?.addEventListener('change', async (e) => {
+      appState.config.ui.autoRollover = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+      showToast(appState.config.ui.autoRollover ? '↪ 已开启：未完成待办 30 天内自动顺延至今天' : '已关闭跨日自动顺延');
+    });
+    document.getElementById('sel-done-sound')?.addEventListener('change', async (e) => {
+      appState.config.ui.doneSound = e.target.value;
+      if (e.target.value !== 'none') playSoundEffect(e.target.value);
+      await persistAndScheduleSync(false);
+    });
+    document.getElementById('sel-rem-sound')?.addEventListener('change', async (e) => {
+      appState.config.ui.remSound = e.target.value;
+      await persistAndScheduleSync(false);
+    });
+    document.getElementById('btn-preview-sound')?.addEventListener('click', () => {
+      playSoundEffect(appState?.config?.ui?.remSound || 'chime');
+    });
+
+    const hotkeyBindings = [
+      ['hk-hide-key', 'sw-hk-hide', 'hide'],
+      ['hk-priv-key', 'sw-hk-priv', 'priv'],
+      ['hk-lock-key', 'sw-hk-lock', 'lock'],
+      ['hk-memo-key', 'sw-hk-memo', 'memo'],
+    ];
+    function formatShortcutEv(ev) {
+      if (['Control', 'Alt', 'Shift', 'Meta'].includes(ev.key)) return '';
+      const parts = [];
+      if (ev.ctrlKey) parts.push('Ctrl');
+      if (ev.altKey) parts.push('Alt');
+      if (ev.shiftKey) parts.push('Shift');
+      const k = ev.key.length === 1 ? ev.key.toUpperCase() : ev.key;
+      if (!parts.length) return '';
+      parts.push(k);
+      return parts.join('+');
+    }
+    hotkeyBindings.forEach(([inpId, swId, hkKey]) => {
+      const inp = document.getElementById(inpId);
+      const sw = document.getElementById(swId);
+      if (inp) {
+        inp.addEventListener('focus', () => { window.SyncBridge.windowAction('suspend-hotkeys'); });
+        inp.addEventListener('blur', () => { window.SyncBridge.windowAction('resume-hotkeys'); });
+        inp.addEventListener('keydown', async (e) => {
+          e.preventDefault();
+          const combo = formatShortcutEv(e);
+          if (!combo) { showToast('请至少配合 Ctrl / Alt / Shift 组合按键'); return; }
+          ensureUiPrefs().hotkeys[hkKey].key = combo;
+          render();
+          await persistAndScheduleSync(false);
+          showToast(`⌨ 已将快捷键修改为 ${combo}`);
+        });
+      }
+      if (sw) {
+        sw.addEventListener('change', async (e) => {
+          ensureUiPrefs().hotkeys[hkKey].enabled = !!e.target.checked;
+          await persistAndScheduleSync(false);
+        });
+      }
+    });
+
+    document.getElementById('btn-reset-defaults')?.addEventListener('click', async () => {
+      const defCopy = JSON.parse(JSON.stringify(DEFAULT_UI_PREFS));
+      Object.assign(appState.config.ui, defCopy);
+      if (window.SyncBridge.mode === 'desktop') {
+        await window.SyncBridge.setDesktopOptions({ autoLaunch: defCopy.autoLaunch, desktopPin: defCopy.desktopPin });
+      }
+      render();
+      await persistAndScheduleSync(false);
+      showToast('↺ 已将所有外观、节气、待办与快捷键设置恢复默认值');
     });
 
     // 三合一智能导入弹窗内卡片点击
@@ -3564,8 +3964,45 @@
     });
 
     if (window.desktopApi) {
-      window.desktopApi.onStateUpdated((next) => { appState = next; ensureClassTimetables(); render(); });
-      window.desktopApi.onLockChanged((locked) => { applyLockUi(locked); });
+      window.desktopApi.onStateUpdated((next) => { appState = next; ensureClassTimetables(); ensureUiPrefs(); render(); });
+      window.desktopApi.onLockChanged((locked) => {
+        if (appState?.config?.ui) appState.config.ui.locked = !!locked;
+        applyLockUi(locked);
+      });
+      if (typeof window.desktopApi.onHotkeyAction === 'function') {
+        window.desktopApi.onHotkeyAction(async (action) => {
+          if (action === 'priv') togglePrivacyMask();
+          else if (action === 'memo') {
+            if (appState?.config?.ui?.homeroomMode) await setHomeroomMode(false);
+            openWorkModal(null);
+          }
+        });
+      }
+    }
+
+    if (window.SyncBridge.mode !== 'desktop') {
+      window.addEventListener('keydown', async (e) => {
+        const ae = document.activeElement;
+        if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || (ae.tagName === 'INPUT' && !ae.classList.contains('shortcut-key-box')))) return;
+        if (ae && ae.classList.contains('shortcut-key-box')) return;
+        const combo = formatShortcutEv(e);
+        if (!combo || !appState) return;
+        const hk = ensureUiPrefs().hotkeys;
+        if (hk.hide?.enabled && combo === hk.hide.key) {
+          e.preventDefault();
+          showToast('已触发隐藏快捷键（Windows 桌面版支持一键收纳至系统托盘）');
+        } else if (hk.priv?.enabled && combo === hk.priv.key) {
+          e.preventDefault();
+          togglePrivacyMask();
+        } else if (hk.lock?.enabled && combo === hk.lock.key) {
+          e.preventDefault();
+          await toggleLock();
+        } else if (hk.memo?.enabled && combo === hk.memo.key) {
+          e.preventDefault();
+          if (appState.config.ui.homeroomMode) await setHomeroomMode(false);
+          openWorkModal(null);
+        }
+      });
     }
 
     // 待排清单（随手记事 + 一键智能排入今日空堂）
@@ -3600,7 +4037,11 @@
     document.getElementById('btn-rem-action').addEventListener('click', async () => {
       if (activeReminderWorkId) {
         const w = (appState.data.works || []).find(x => x.id === activeReminderWorkId);
-        if (w) { w.done = true; w.updatedAt = Date.now(); render(); await persistAndScheduleSync(); showToast(`☑ 已完成：${w.title}`); }
+        if (w) {
+          w.done = true; w.updatedAt = Date.now();
+          if (appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
+          render(); await persistAndScheduleSync(); showToast(`☑ 已完成：${w.title}`);
+        }
       }
       document.getElementById('reminder-popup').classList.add('hidden');
     });
@@ -3638,13 +4079,18 @@
     const box = document.getElementById('inbox-list');
     const toggleBtn = document.getElementById('btn-inbox-toggle');
     if (!box || !toggleBtn || !appState) return;
+    const ui = appState?.config?.ui || DEFAULT_UI_PREFS;
     const inbox = Array.isArray(appState.data.inbox) ? appState.data.inbox : [];
     const pendingCnt = inbox.filter(x => !x.done).length;
     toggleBtn.textContent = pendingCnt ? `📥 待排清单(${pendingCnt})` : '📥 待排清单';
-    box.innerHTML = inbox.map(it => `
+    let list = inbox.filter(x => ui.showDoneWork !== false || !x.done);
+    if (ui.doneToBottom !== false) {
+      list = list.slice().sort((a, b) => Number(!!a.done) - Number(!!b.done));
+    }
+    box.innerHTML = list.map((it, idx) => `
       <div class="inbox-chip ${it.done ? 'done' : ''}">
         <input type="checkbox" ${it.done ? 'checked' : ''} data-ib-chk="${it.id}" />
-        <span class="ib-txt">${escapeHtml(it.text)}</span>
+        <span class="ib-txt">${formatWorkPrefix(idx)}${escapeHtml(it.text)}</span>
         ${!it.done ? `<button class="inbox-auto-btn" data-ib-plan="${it.id}">排入空堂</button>` : ''}
         <button class="inbox-del-btn" data-ib-del="${it.id}" title="移除">✕</button>
       </div>
@@ -3652,7 +4098,11 @@
 
     box.querySelectorAll('[data-ib-chk]').forEach(el => el.addEventListener('change', async () => {
       const item = appState.data.inbox.find(x => x.id === el.dataset.ibChk);
-      if (item) { item.done = el.checked; renderInbox(); await persistAndScheduleSync(false); }
+      if (item) {
+        item.done = el.checked;
+        if (item.done && appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
+        renderInbox(); await persistAndScheduleSync(false);
+      }
     }));
     box.querySelectorAll('[data-ib-del]').forEach(el => el.addEventListener('click', async () => {
       appState.data.inbox = appState.data.inbox.filter(x => x.id !== el.dataset.ibDel);
@@ -3683,22 +4133,35 @@
   let activeReminderWorkId = null;
   let reminderAutoHide = null;
 
-  function playSoftChime() {
+  function playSoundEffect(kind = 'chime') {
+    if (!kind || kind === 'none') return;
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
       const ctx = new Ctx();
-      [660, 880].forEach((freq, idx) => {
+      const seqMap = {
+        ding: [[988, 0, 0.24]],
+        bubble: [[523, 0, 0.14], [784, 0.09, 0.20]],
+        chime: [[660, 0, 0.34], [880, 0.14, 0.36]],
+        dong: [[440, 0, 0.42], [330, 0.18, 0.48]],
+        wind: [[784, 0, 0.22], [988, 0.11, 0.24], [1175, 0.22, 0.34]],
+      };
+      const notes = seqMap[kind] || seqMap.chime;
+      notes.forEach(([freq, delay, dur]) => {
         const osc = ctx.createOscillator(), gain = ctx.createGain();
         osc.type = 'sine'; osc.frequency.value = freq;
-        const t0 = ctx.currentTime + idx * 0.14;
+        const t0 = ctx.currentTime + delay;
         gain.gain.setValueAtTime(0.001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.07, t0 + 0.03);
-        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.36);
+        gain.gain.exponentialRampToValueAtTime(0.08, t0 + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
         osc.connect(gain); gain.connect(ctx.destination);
-        osc.start(t0); osc.stop(t0 + 0.38);
+        osc.start(t0); osc.stop(t0 + dur + 0.02);
       });
     } catch {}
+  }
+
+  function playSoftChime() {
+    playSoundEffect(appState?.config?.ui?.remSound || 'chime');
   }
 
   function showReminderCard({ title, body, urgent, workId }) {
@@ -3761,6 +4224,7 @@
     bindGlobalEvents();
     appState = await window.SyncBridge.loadState();
     ensureClassTimetables();
+    ensureUiPrefs();
     isUiLocked = !!appState?.config?.ui?.locked;
     render();
     pushAndroidWidgetSummary();

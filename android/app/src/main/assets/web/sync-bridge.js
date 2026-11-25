@@ -176,6 +176,33 @@
           desktopPin: true,
           autoLaunch: false,
           lanEnabled: true,
+          frostedBlur: true,
+          fontFamily: 'system',
+          fontSize: 13,
+          textMainColor: '',
+          todayAccent: '#007aff',
+          restColBg: '',
+          holidayColor: '#e11d48',
+          solarTermColor: '#16a34a',
+          showWeekNum: true,
+          restWeekdays: [6, 7],
+          showStatutory: true,
+          showFestival: true,
+          showLunar: true,
+          showSolarTerm: true,
+          showYiJi: false,
+          bulletStyle: 'none',
+          showDoneWork: true,
+          doneToBottom: true,
+          autoRollover: false,
+          doneSound: 'ding',
+          remSound: 'chime',
+          hotkeys: {
+            hide: { key: 'Ctrl+Alt+H', enabled: true },
+            priv: { key: 'Ctrl+Alt+F', enabled: true },
+            lock: { key: 'Ctrl+Alt+L', enabled: true },
+            memo: { key: 'Ctrl+Alt+N', enabled: true },
+          },
         },
       },
       data: {
@@ -351,12 +378,12 @@
 
     async getAppVersion() {
       if (mode === 'desktop') return window.desktopApi.getAppVersion();
-      return '1.1.0';
+      return '1.5.6';
     },
 
     async checkUpdate(cfg) {
       if (mode === 'desktop') return window.desktopApi.checkUpdate(cfg);
-      return { ok: true, hasUpdate: false, currentVersion: '1.1.0', latestVersion: '1.1.0', message: '在线一键热更新支持在 Windows 桌面端运行；安卓端可在 GitHub Actions 自动生成最新 APK。' };
+      return { ok: true, hasUpdate: false, currentVersion: '1.5.6', latestVersion: '1.5.6', message: '在线一键热更新支持在 Windows 桌面端运行；安卓端可在 GitHub Actions 自动生成最新 APK。' };
     },
 
     async applyUpdate(downloadUrl) {

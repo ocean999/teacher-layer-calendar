@@ -25,8 +25,14 @@
   --apple-green: #34C759;
   --apple-orange: #FF9500;
   --apple-indigo: #5856D6;
+  --today-accent: #007AFF;
   --today-col-bg: rgba(0, 122, 255, 0.045);
   --today-hdr-bg: rgba(0, 122, 255, 0.12);
+  --rest-col-bg: rgba(148, 163, 184, 0.09);
+  --holiday-color: #e11d48;
+  --solar-term-color: #16a34a;
+  --app-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  --app-font-size: 13px;
   --past-curtain-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.065) 0%, rgba(15, 23, 42, 0.03) 100%);
   --break-band-bg: rgba(148, 163, 184, 0.075);
   --work-card-bg: rgba(255, 159, 10, 0.90);
@@ -67,8 +73,12 @@
   --apple-green: #30D158;
   --apple-orange: #FF9F0A;
   --apple-indigo: #5E5CE6;
+  --today-accent: #0A84FF;
   --today-col-bg: rgba(10, 132, 255, 0.07);
   --today-hdr-bg: rgba(10, 132, 255, 0.20);
+  --rest-col-bg: rgba(148, 163, 184, 0.08);
+  --holiday-color: #fda4af;
+  --solar-term-color: #4ade80;
   --past-curtain-bg: linear-gradient(180deg, rgba(0, 0, 0, 0.24) 0%, rgba(0, 0, 0, 0.10) 100%);
   --break-band-bg: rgba(255, 255, 255, 0.03);
   --work-card-bg: rgba(255, 159, 10, 0.88);
@@ -98,12 +108,17 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-family: var(--app-font);
   color: var(--text-main);
   background: transparent;
-  font-size: 13px;
+  font-size: var(--app-font-size);
   font-variant-numeric: tabular-nums;
   user-select: none;
+}
+
+html[data-frosted="off"] #app {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 body.mode-web, body.mode-android {
@@ -1515,3 +1530,33 @@ body:not(.mode-desktop) .desktop-only { display: none !important; }
 .cn-tag { position: absolute; top: 3px; right: 3px; padding: 0 3.5px; border-radius: 4px; font-size: 9px; font-weight: 700; line-height: 14px; }
 .cn-tag.rest { background: #FF3B30; color: #fff; }
 .cn-tag.work { background: #FF9500; color: #fff; }
+
+/* 设置弹窗内紧凑分组卡、苹果风开关与配色/快捷键/节气样式 */
+.set-card { padding: 9px 11px; border-radius: 12px; border: 1px solid var(--border-soft); background: var(--glass-pill); display: flex; flex-direction: column; gap: 7px; }
+.set-card-hdr { font-size: 11.5px; font-weight: 700; color: var(--apple-blue); display: flex; align-items: center; justify-content: space-between; }
+.set-card-hdr::before { content: ''; display: inline-block; width: 3px; height: 11px; border-radius: 99px; background: var(--apple-blue); margin-right: 6px; vertical-align: middle; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--text-main); }
+.set-row-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 1px; }
+.ios-switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+.ios-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ios-switch-track { width: 36px; height: 20px; border-radius: 999px; background: rgba(148,163,184,0.38); border: 1px solid var(--border-soft); position: relative; transition: background 0.18s; }
+.ios-switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.22); transition: transform 0.18s; }
+.ios-switch input:checked + .ios-switch-track { background: var(--apple-blue); border-color: var(--apple-blue); }
+.ios-switch input:checked + .ios-switch-track::after { transform: translateX(16px); }
+.set-color-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.set-color-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 8px; border-radius: 9px; border: 1px solid var(--border-soft); background: var(--glass-header); font-size: 11.5px; }
+.bullet-card-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.bullet-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px; border-radius: 10px; border: 1.5px solid var(--border-soft); background: var(--glass-header); cursor: pointer; font-size: 11.5px; color: var(--text-sub); transition: all 0.15s; }
+.bullet-card.active { border-color: var(--apple-blue); background: rgba(0,122,255,0.12); color: var(--apple-blue); font-weight: 700; }
+.shortcut-key-box { width: 112px; text-align: center; padding: 3px 7px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--input-bg); color: var(--text-main); font-size: 11.5px; font-weight: 600; cursor: pointer; outline: none; }
+.shortcut-key-box:focus { border-color: var(--apple-blue); box-shadow: 0 0 0 2px rgba(0,122,255,0.22); }
+.rest-wd-chip { display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border-radius: 8px; border: 1px solid var(--border-soft); background: var(--glass-header); font-size: 11px; cursor: pointer; }
+.day-col.rest-col { background: var(--rest-col-bg); }
+.day-col.today-col { background: var(--today-col-bg); box-shadow: inset 0 0 0 1.5px var(--today-accent); }
+.timeline-header-cell.today { background: var(--today-hdr-bg); color: var(--today-accent); font-weight: 700; box-shadow: inset 0 -2px 0 var(--today-accent); }
+.hdr-lunar-sub { display: inline-block; margin-left: 3px; font-size: 10px; font-weight: 500; opacity: 0.78; }
+.hdr-term-tag { display: inline-block; margin-left: 3px; padding: 0 4px; border-radius: 4px; font-size: 9.5px; font-weight: 700; color: var(--solar-term-color); background: rgba(22,163,74,0.12); }
+.hdr-fest-tag { display: inline-block; margin-left: 3px; padding: 0 4px; border-radius: 4px; font-size: 9.5px; font-weight: 700; color: var(--holiday-color); background: rgba(225,29,72,0.12); }
+.month-cell.today { border-color: var(--today-accent); background: var(--today-hdr-bg); box-shadow: inset 0 0 0 1.5px var(--today-accent); }
+.month-cell.rest-day-cell { background: var(--rest-col-bg); }
+.work-rollover-tag { display: inline-block; font-size: 9.5px; padding: 0 4px; border-radius: 4px; background: rgba(255,255,255,0.28); margin-right: 2px; font-weight: 700; }

@@ -112,6 +112,33 @@ function createDefaultState() {
         autoLaunch: false,
         reminderEnabled: true,
         lanEnabled: true,
+        frostedBlur: true,
+        fontFamily: 'system',
+        fontSize: 13,
+        textMainColor: '',
+        todayAccent: '#007aff',
+        restColBg: '',
+        holidayColor: '#e11d48',
+        solarTermColor: '#16a34a',
+        showWeekNum: true,
+        restWeekdays: [6, 7],
+        showStatutory: true,
+        showFestival: true,
+        showLunar: true,
+        showSolarTerm: true,
+        showYiJi: false,
+        bulletStyle: 'none',
+        showDoneWork: true,
+        doneToBottom: true,
+        autoRollover: false,
+        doneSound: 'ding',
+        remSound: 'chime',
+        hotkeys: {
+          hide: { key: 'Ctrl+Alt+H', enabled: true },
+          priv: { key: 'Ctrl+Alt+F', enabled: true },
+          lock: { key: 'Ctrl+Alt+L', enabled: true },
+          memo: { key: 'Ctrl+Alt+N', enabled: true },
+        },
       },
       bounds: null,
     },
@@ -216,11 +243,23 @@ function loadState() {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     const def = createDefaultState();
     const clsData = normalizeLoadedClassData(parsed.data, def.data);
+    const rawUi = parsed.config?.ui || {};
+    const mergedHotkeys = {
+      hide: { ...def.config.ui.hotkeys.hide, ...(rawUi.hotkeys?.hide || {}) },
+      priv: { ...def.config.ui.hotkeys.priv, ...(rawUi.hotkeys?.priv || {}) },
+      lock: { ...def.config.ui.hotkeys.lock, ...(rawUi.hotkeys?.lock || {}) },
+      memo: { ...def.config.ui.hotkeys.memo, ...(rawUi.hotkeys?.memo || {}) },
+    };
     return {
       config: {
         webdav: { ...def.config.webdav, ...(parsed.config?.webdav || {}) },
         updater: { ...def.config.updater, ...(parsed.config?.updater || {}) },
-        ui: { ...def.config.ui, ...(parsed.config?.ui || {}) },
+        ui: {
+          ...def.config.ui,
+          ...rawUi,
+          restWeekdays: Array.isArray(rawUi.restWeekdays) ? rawUi.restWeekdays : def.config.ui.restWeekdays,
+          hotkeys: mergedHotkeys,
+        },
         bounds: parsed.config?.bounds || null,
       },
       data: {
@@ -358,11 +397,69 @@ function updateTrayMenu() {
     },
     { type: 'separator' },
     { label: lanLabel, enabled: false },
-    { label: '快捷键 Ctrl+Alt+L 随时锁定/解锁', enabled: false },
+    { label: `快捷键 ${st.config.ui?.hotkeys?.lock?.key || 'Ctrl+Alt+L'} 随时锁定/解锁`, enabled: false },
     { type: 'separator' },
     { label: '⏻ 彻底退出桌面日历', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
+}
+
+function toElectronAccelerator(combo) {
+  if (!combo || typeof combo !== 'string') return '';
+  return combo
+    .split('+')
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => {
+      if (/^ctrl$/i.test(p)) return 'CommandOrControl';
+      if (/^meta|cmd|super$/i.test(p)) return 'Super';
+      if (p.length === 1) return p.toUpperCase();
+      return p;
+    })
+    .join('+');
+}
+
+function applyGlobalShortcuts(ui) {
+  if (!app.isReady()) return;
+  try {
+    globalShortcut.unregisterAll();
+  } catch {}
+  const defHotkeys = createDefaultState().config.ui.hotkeys;
+  const hk = ui?.hotkeys || defHotkeys;
+  const register = (cfg, handler) => {
+    if (!cfg || !cfg.enabled || !cfg.key) return;
+    const acc = toElectronAccelerator(cfg.key);
+    if (!acc) return;
+    try {
+      globalShortcut.register(acc, handler);
+    } catch {}
+  };
+
+  register(hk.hide || defHotkeys.hide, () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+      mainWindow.hide();
+    } else {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+  register(hk.lock || defHotkeys.lock, () => setDesktopLock(!isLocked));
+  register(hk.priv || defHotkeys.priv, () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('win:hotkey-action', 'priv');
+    }
+  });
+  register(hk.memo || defHotkeys.memo, () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!mainWindow.isVisible() || mainWindow.isMinimized()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+    }
+    mainWindow.focus();
+    mainWindow.webContents.send('win:hotkey-action', 'memo');
+  });
 }
 
 async function runSync(overrideData = null) {
@@ -461,13 +558,22 @@ function registerIpc() {
 
   ipcMain.handle('state:save', (_, payload) => {
     const cur = loadState();
+    const nextConfig = payload.config
+      ? {
+          ...cur.config,
+          ...payload.config,
+          ui: payload.config.ui ? { ...cur.config.ui, ...payload.config.ui } : cur.config.ui,
+        }
+      : cur.config;
     const next = {
       ...cur,
-      config: payload.config ? { ...cur.config, ...payload.config } : cur.config,
+      config: nextConfig,
       data: payload.data ? payload.data : cur.data,
       lastSyncedAt: payload.lastSyncedAt !== undefined ? payload.lastSyncedAt : cur.lastSyncedAt,
     };
     saveState(next);
+    applyGlobalShortcuts(next.config.ui);
+    updateTrayMenu();
     return next;
   });
 
@@ -561,6 +667,14 @@ function registerIpc() {
   });
 
   ipcMain.handle('win:action', (_, action) => {
+    if (action === 'suspend-hotkeys') {
+      try { globalShortcut.unregisterAll(); } catch {}
+      return;
+    }
+    if (action === 'resume-hotkeys') {
+      applyGlobalShortcuts(loadState().config.ui);
+      return;
+    }
     if (!mainWindow) return;
     if (action === 'minimize') mainWindow.minimize();
     if (action === 'hide' || action === 'close' || action === 'quit') mainWindow.hide();
@@ -598,12 +712,22 @@ app.whenReady().then(() => {
     getState: () => loadState(),
     saveState: (payload) => {
       const cur = loadState();
+      const nextConfig = payload.config
+        ? {
+            ...cur.config,
+            ...payload.config,
+            ui: payload.config.ui ? { ...cur.config.ui, ...payload.config.ui } : cur.config.ui,
+          }
+        : cur.config;
       const next = {
         ...cur,
-        config: payload.config ? { ...cur.config, ...payload.config } : cur.config,
+        config: nextConfig,
         data: payload.data ? payload.data : cur.data,
       };
-      return saveState(next);
+      const saved = saveState(next);
+      applyGlobalShortcuts(saved.config.ui);
+      updateTrayMenu();
+      return saved;
     },
     doSync: (data) => runSync(data),
     doTestWebDav: (cfg) => webdav.testConnection(cfg),
@@ -619,7 +743,7 @@ app.whenReady().then(() => {
   createWindow();
   updateTrayMenu();
 
-  globalShortcut.register('CommandOrControl+Alt+L', () => setDesktopLock(!isLocked));
+  applyGlobalShortcuts(loadState().config.ui);
 });
 
 app.on('will-quit', () => {
