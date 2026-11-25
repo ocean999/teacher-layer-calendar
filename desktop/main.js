@@ -152,10 +152,56 @@ function createDefaultState() {
         courses: buildDefaultClassCourses(now),
         overrides: [],
       },
+      activeClassId: 'cls_1',
+      classTimetables: [
+        {
+          id: 'cls_1',
+          className: '902班',
+          metaUpdatedAt: now,
+          courses: buildDefaultClassCourses(now),
+          overrides: [],
+        },
+      ],
       inbox: [],
       dayOverrides: {},
     },
     lastSyncedAt: null,
+  };
+}
+
+function normalizeLoadedClassData(parsedData, defData) {
+  let list = [];
+  if (Array.isArray(parsedData?.classTimetables) && parsedData.classTimetables.length) {
+    list = parsedData.classTimetables.map((ct, i) => ({
+      id: ct.id || `cls_${i + 1}`,
+      className: ct.className || ct.name || `班级${i + 1}`,
+      metaUpdatedAt: ct.metaUpdatedAt || 0,
+      courses: Array.isArray(ct.courses) ? ct.courses : [],
+      overrides: Array.isArray(ct.overrides) ? ct.overrides : [],
+    })).slice(0, 3);
+  } else if (parsedData?.classTimetable && Array.isArray(parsedData.classTimetable.courses)) {
+    const ct = parsedData.classTimetable;
+    list = [{
+      id: ct.id || 'cls_1',
+      className: ct.className || '902班',
+      metaUpdatedAt: ct.metaUpdatedAt || 0,
+      courses: ct.courses,
+      overrides: Array.isArray(ct.overrides) ? ct.overrides : [],
+    }];
+  } else {
+    list = defData.classTimetables;
+  }
+  const activeClassId = list.some(c => c.id === parsedData?.activeClassId) ? parsedData.activeClassId : list[0].id;
+  const primary = list.find(c => c.id === activeClassId) || list[0];
+  return {
+    activeClassId,
+    classTimetables: list,
+    classTimetable: {
+      className: primary.className,
+      metaUpdatedAt: primary.metaUpdatedAt,
+      courses: primary.courses,
+      overrides: primary.overrides,
+    },
   };
 }
 
@@ -169,6 +215,7 @@ function loadState() {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     const def = createDefaultState();
+    const clsData = normalizeLoadedClassData(parsed.data, def.data);
     return {
       config: {
         webdav: { ...def.config.webdav, ...(parsed.config?.webdav || {}) },
@@ -186,9 +233,9 @@ function loadState() {
         },
         overrides: Array.isArray(parsed.data?.overrides) ? parsed.data.overrides : [],
         works: Array.isArray(parsed.data?.works) ? parsed.data.works : [],
-        classTimetable: parsed.data?.classTimetable && Array.isArray(parsed.data.classTimetable.courses)
-          ? parsed.data.classTimetable
-          : def.data.classTimetable,
+        classTimetable: clsData.classTimetable,
+        activeClassId: clsData.activeClassId,
+        classTimetables: clsData.classTimetables,
         inbox: Array.isArray(parsed.data?.inbox) ? parsed.data.inbox : [],
         dayOverrides: (parsed.data?.dayOverrides && typeof parsed.data.dayOverrides === 'object')
           ? parsed.data.dayOverrides
@@ -335,6 +382,8 @@ async function runSync(overrideData = null) {
       overrides: merged.overrides,
       works: merged.works,
       classTimetable: merged.classTimetable,
+      classTimetables: merged.classTimetables,
+      activeClassId: merged.activeClassId,
       inbox: st.data.inbox || [],
       dayOverrides: st.data.dayOverrides || {},
     };

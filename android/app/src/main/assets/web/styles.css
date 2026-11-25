@@ -1184,7 +1184,7 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
   align-items: center;
 }
 
-/* 全局弹窗取消背景磨砂遮罩，保留卡片投影与层次，确保底层日历与桌面内容清晰可见 */
+/* 全局弹窗取消背景磨砂遮罩，保留卡片投影与层次，固定从上方正中央弹出并向下延伸 */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1192,10 +1192,10 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 100;
-  padding: 14px;
+  padding: clamp(38px, 11vh, 96px) 14px 16px;
   transition: background 0.2s ease;
 }
 .modal-backdrop.hidden { display: none; }
@@ -1326,21 +1326,9 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
 .reminder-popup.hidden { opacity: 0; transform: translateY(-10px); pointer-events: none; }
 .reminder-popup.urgent-rem { border-color: rgba(255, 59, 48, 0.55); }
 
-#modal-settings.live-preview-mode {
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 18px 20px;
-}
-#modal-settings.live-preview-mode .modal {
-  max-width: 440px;
-  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.22), 0 0 0 1px var(--border-strong);
-  transition: opacity 0.16s ease;
-}
-#modal-settings.live-preview-mode.adjusting-alpha .modal {
+#modal-settings.adjusting-alpha .modal {
   opacity: 0.78;
+  transition: opacity 0.16s ease;
 }
 
 .skin-swatch-row {
@@ -1384,8 +1372,8 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
 
 .modal {
   width: 100%;
-  max-width: 490px;
-  max-height: 88vh;
+  max-width: 500px;
+  max-height: calc(100vh - clamp(54px, 11vh + 16px, 112px));
   background: var(--glass-modal);
   backdrop-filter: blur(32px) saturate(180%);
   border: 1px solid var(--border-strong);
@@ -1405,6 +1393,8 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
   border-bottom: 1px solid var(--border-soft);
   font-weight: 700;
   font-size: 14px;
+  cursor: move;
+  user-select: none;
 }
 .modal-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
 .modal-footer { padding: 11px 18px; border-top: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -1449,7 +1439,10 @@ body.compact-short .work-time { font-size: 9.5px; line-height: 1.1; }
 
 .course-list-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .course-list-table th, .course-list-table td { padding: 7px 8px; border-bottom: 1px solid var(--border-soft); text-align: left; }
-.course-list-table th { color: var(--text-muted); font-weight: 600; }
+.course-list-table th { color: var(--text-muted); font-weight: 600; position: sticky; top: 0; background: var(--glass-modal); z-index: 2; }
+.course-list-table tbody tr { transition: background 0.12s; cursor: pointer; }
+.course-list-table tbody tr:hover { background: rgba(0, 122, 255, 0.08); }
+.class-bar-chips { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 
 .toast {
   position: fixed;

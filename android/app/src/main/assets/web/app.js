@@ -18,10 +18,12 @@
   let activeRescheduleCtx = null;
   let activeWorkId = null;
   let activeTtTab = 'my'; // 'my' | 'class' | 'periods'
-  let activeSettingsTab = 'sync'; // 'sync' | 'theme' | 'desktop' | 'update'
+  let editingTtCourseId = null;
+  let activeSettingsTab = 'theme'; // 'theme' | 'cal' | 'desktop' | 'update'
   let activeImportTarget = 'class'; // 'my' | 'class'
   let latestUpdateInfo = null;
   let savedPersonalLayers = { showCourse: true, showWork: true };
+  let pendingClassScope = null;
   const darkMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   function getLunarParts(d) {
@@ -230,6 +232,98 @@
     return best;
   }
 
+  // ===== 多班级课表管理辅助（上限 3 个班级，兼容旧单班镜像字段） =====
+  function ensureClassTimetables() {
+    if (!appState || !appState.data) return [];
+    const d = appState.data;
+    const now = Date.now();
+    if (!Array.isArray(d.classTimetables) || !d.classTimetables.length) {
+      const legacy = d.classTimetable || {};
+      d.classTimetables = [{
+        id: legacy.id || 'cls_1',
+        className: legacy.className || '902班',
+        metaUpdatedAt: legacy.metaUpdatedAt || now,
+        courses: Array.isArray(legacy.courses) ? legacy.courses : [],
+        overrides: Array.isArray(legacy.overrides) ? legacy.overrides : [],
+      }];
+    } else {
+      d.classTimetables = d.classTimetables
+        .filter(ct => !ct.deleted)
+        .slice(0, 3)
+        .map((ct, i) => ({
+          id: ct.id || `cls_${i + 1}`,
+          className: ct.className || ct.name || `班级${i + 1}`,
+          metaUpdatedAt: ct.metaUpdatedAt || 0,
+          courses: Array.isArray(ct.courses) ? ct.courses : [],
+          overrides: Array.isArray(ct.overrides) ? ct.overrides : [],
+        }));
+      if (!d.classTimetables.length) {
+        d.classTimetables = [{ id: 'cls_1', className: '902班', metaUpdatedAt: now, courses: [], overrides: [] }];
+      }
+    }
+    if (!d.activeClassId || !d.classTimetables.some(c => c.id === d.activeClassId)) {
+      d.activeClassId = d.classTimetables[0].id;
+    }
+    syncLegacyClassTimetableMirror();
+    return d.classTimetables;
+  }
+
+  function syncLegacyClassTimetableMirror() {
+    if (!appState?.data?.classTimetables?.length) return;
+    const active = appState.data.classTimetables.find(c => c.id === appState.data.activeClassId) || appState.data.classTimetables[0];
+    appState.data.classTimetable = {
+      id: active.id,
+      className: active.className,
+      metaUpdatedAt: active.metaUpdatedAt || Date.now(),
+      courses: active.courses,
+      overrides: active.overrides,
+    };
+  }
+
+  function getActiveClassTt() {
+    const list = ensureClassTimetables();
+    return list.find(c => c.id === appState.data.activeClassId) || list[0];
+  }
+
+  function addNewClassTimetable(nameRaw) {
+    const list = ensureClassTimetables();
+    if (list.length >= 3) {
+      showToast('⚠️ 最多支持管理 3 个班级课表');
+      return null;
+    }
+    const n = list.length + 1;
+    const className = String(nameRaw || '').trim() || `新班级${n}`;
+    const nc = { id: uid('cls'), className, metaUpdatedAt: Date.now(), courses: [], overrides: [] };
+    list.push(nc);
+    appState.data.activeClassId = nc.id;
+    syncLegacyClassTimetableMirror();
+    return nc;
+  }
+
+  function renderHomeroomClassTabs() {
+    const box = document.getElementById('homeroom-class-tabs');
+    const addBtn = document.getElementById('btn-homeroom-add-cls');
+    if (!box || !appState?.data) return;
+    const list = ensureClassTimetables();
+    const cur = getActiveClassTt();
+    box.innerHTML = list.map(ct =>
+      `<button class="seg-btn ${ct.id === cur.id ? 'active' : ''}" data-switch-cls="${ct.id}">${escapeHtml(ct.className)}</button>`
+    ).join('');
+    box.querySelectorAll('[data-switch-cls]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        appState.data.activeClassId = btn.dataset.switchCls;
+        syncLegacyClassTimetableMirror();
+        render();
+        await persistAndScheduleSync(false);
+        showToast(`已切换至「${getActiveClassTt().className}」课表`);
+      });
+    });
+    if (addBtn) {
+      addBtn.disabled = list.length >= 3;
+      addBtn.textContent = list.length >= 3 ? `已达上限(${list.length}/3)` : `+ 新增班级(${list.length}/3)`;
+    }
+  }
+
   // ===== 核心：计算某天生效的课表（支持 source='my' 个人底层课表 / source='class' 班主任班级课表） =====
   function getEffectiveCoursesForDate(dateStr, source = 'my') {
     const d = parseDate(dateStr);
@@ -238,11 +332,12 @@
     const weekNum = getWeekNumber(dateStr);
     const parityNow = weekNum % 2 === 0 ? 'even' : 'odd';
 
+    const activeCls = source === 'class' ? getActiveClassTt() : null;
     const rawCourses = source === 'class'
-      ? (appState.data.classTimetable?.courses || [])
+      ? (activeCls?.courses || [])
       : (appState.data.timetable?.courses || []);
     const rawOverrides = source === 'class'
-      ? (appState.data.classTimetable?.overrides || [])
+      ? (activeCls?.overrides || [])
       : (appState.data.overrides || []);
 
     const courses = rawCourses.filter(c => !c.deleted);
@@ -386,6 +481,7 @@
       const res = await window.SyncBridge.syncWebDav(appState);
       if (res && res.ok && res.state) {
         appState = res.state;
+        ensureClassTimetables();
         refreshSyncBadgeFromState();
         render();
         pushAndroidWidgetSummary();
@@ -481,9 +577,10 @@
     const homeroomOn = !!ui.homeroomMode;
     document.body.classList.toggle('homeroom-active', homeroomOn);
 
-    const className = appState.data.classTimetable?.className || '902班';
-    document.getElementById('homeroom-label-text').textContent = `🏫 班级课表（${className}）`;
-    document.getElementById('homeroom-banner-text').textContent = `🏫 班级课表专属视图：${className} 全周课程（已隐藏个人课表与待办）`;
+    document.getElementById('homeroom-label-text').textContent = '🏫 班级课表';
+    const bannerTxtEl = document.getElementById('homeroom-banner-text');
+    if (bannerTxtEl) bannerTxtEl.textContent = '🏫 班级课表（★ 为我任教课程）：';
+    renderHomeroomClassTabs();
 
     document.getElementById('chk-homeroom').checked = homeroomOn;
     document.getElementById('pill-homeroom').classList.toggle('active-homeroom', homeroomOn);
@@ -502,7 +599,6 @@
     document.getElementById('chk-magnet').checked = ui.magnetSnap !== false;
     document.getElementById('rng-course-opacity').value = ui.courseOpacity ?? 78;
     document.getElementById('rng-work-opacity').value = ui.workOpacity ?? 92;
-    document.getElementById('rng-bg-alpha').value = bgAlpha;
     const bgAlphaSet = document.getElementById('rng-bg-alpha-set');
     if (bgAlphaSet) bgAlphaSet.value = bgAlpha;
     const autoEl = document.getElementById('opt-autolaunch');
@@ -603,6 +699,7 @@
 
   function render() {
     if (!appState) return;
+    ensureClassTimetables();
     applyUiControlsFromState();
     applyLockUi(isUiLocked);
     refreshSyncBadgeFromState();
@@ -961,8 +1058,9 @@
         e.stopPropagation();
         const source = el.dataset.ghostSource || 'my';
         const ovId = el.dataset.ghostOv;
-        const ovList = source === 'class' ? (appState.data.classTimetable?.overrides || []) : (appState.data.overrides || []);
-        const cList = source === 'class' ? (appState.data.classTimetable?.courses || []) : (appState.data.timetable?.courses || []);
+        const activeCls = source === 'class' ? getActiveClassTt() : null;
+        const ovList = source === 'class' ? (activeCls?.overrides || []) : (appState.data.overrides || []);
+        const cList = source === 'class' ? (activeCls?.courses || []) : (appState.data.timetable?.courses || []);
         const ov = ovList.find(o => o.id === ovId);
         if (!ov) return;
         const c = cList.find(x => x.id === ov.courseId);
@@ -1300,11 +1398,191 @@
     return false;
   }
 
-  async function applySingleCourseMove(params) {
+  // ===== 班级课表修改/对调生效范围确认 + 自动同步个人授课课表 =====
+  function findMatchingMyCourse(clsName, origWd, origStart, clsTitle) {
+    const clsKey = String(clsName || '').replace(/班$/, '').trim();
+    const sMin = toMin(origStart);
+    const slotMatches = (appState.data.timetable?.courses || []).filter(
+      mc => !mc.deleted && mc.weekday === origWd && Math.abs(toMin(mc.start) - sMin) <= 5
+    );
+    if (!slotMatches.length) return null;
+    if (clsKey) {
+      const exact = slotMatches.find(mc => (mc.title || '').includes(clsKey) || (mc.room || '').includes(clsKey));
+      if (exact) return exact;
+    }
+    return slotMatches.find(mc => {
+      const dig = (mc.title || '').match(/\d{3}/);
+      if (dig && clsKey && dig[0] !== clsKey) return false;
+      const clean = String(clsTitle || '').replace(/[（(][^）)]*[）)]/g, '').trim();
+      return clean && ((mc.title || '').includes(clean) || clean.includes((mc.title || '').replace(/\d{3}/g, '').trim()));
+    }) || null;
+  }
+
+  function applyMyCourseSingleOverride(mc, fromDateStr, toDateStr, toStart, toEnd, now) {
+    if (!mc) return;
+    if (!Array.isArray(appState.data.overrides)) appState.data.overrides = [];
+    const active = getEffectiveCoursesForDate(fromDateStr, 'my').activeList.find(x => x.courseId === mc.id);
+    upsertCourseMoveOverride(appState.data.overrides, {
+      courseId: mc.id,
+      origDate: active ? active.origDate : fromDateStr,
+      origStart: active ? active.origStart : mc.start,
+      origEnd: active ? active.origEnd : mc.end,
+      title: mc.title,
+      overrideId: active ? (active.overrideId || null) : null,
+    }, toDateStr, toStart, toEnd, now);
+  }
+
+  function promptClassChangeScope(payload) {
+    pendingClassScope = payload;
+    const { mode, cls } = payload;
+    let desc = '';
+    const syncNotes = [];
+    if (mode === 'swap') {
+      const wdA = getIsoWeekday(parseDate(payload.a.curDate));
+      const wdB = getIsoWeekday(parseDate(payload.b.curDate));
+      const myA = findMatchingMyCourse(cls.className, wdA, payload.a.curStart, payload.a.title);
+      const myB = findMatchingMyCourse(cls.className, wdB, payload.b.curStart, payload.b.title);
+      payload.myA = myA;
+      payload.myB = (myB && myB !== myA) ? myB : null;
+      desc = `将在「<strong>${escapeHtml(cls.className)}</strong>」中对调：<br/>• <strong>${escapeHtml(payload.a.title)}</strong>（${payload.a.curDate.slice(5)} ${payload.a.curStart}-${payload.a.curEnd}）↔ <strong>${escapeHtml(payload.b.title)}</strong>（${payload.b.curDate.slice(5)} ${payload.b.curStart}-${payload.b.curEnd}）`;
+      if (payload.myA) syncNotes.push(`「${escapeHtml(payload.myA.title)}」`);
+      if (payload.myB) syncNotes.push(`「${escapeHtml(payload.myB.title)}」`);
+    } else if (mode === 'move') {
+      const wdA = getIsoWeekday(parseDate(payload.item.origDate));
+      payload.myA = findMatchingMyCourse(cls.className, wdA, payload.item.origStart, payload.item.title);
+      desc = `将在「<strong>${escapeHtml(cls.className)}</strong>」中把 <strong>${escapeHtml(payload.item.title)}</strong> 从 ${payload.item.origDate.slice(5)} ${payload.item.origStart}-${payload.item.origEnd} 调整至 <strong>${payload.targetDate.slice(5)} ${payload.targetStart}-${payload.targetEnd}</strong>。`;
+      if (payload.myA) syncNotes.push(`「${escapeHtml(payload.myA.title)}」`);
+    } else {
+      payload.myA = findMatchingMyCourse(cls.className, payload.origWd, payload.origStart, payload.origTitle);
+      desc = `将在「<strong>${escapeHtml(cls.className)}</strong>」中修改 <strong>${escapeHtml(payload.origTitle)}</strong> → <strong>${escapeHtml(payload.nextTitle)}</strong>（${WEEKDAYS_ISO[payload.nextWd]} ${payload.nextStart}-${payload.nextEnd}）。`;
+      if (payload.myA) syncNotes.push(`「${escapeHtml(payload.myA.title)}」`);
+    }
+    if (syncNotes.length) {
+      desc += `<div style="margin-top:5px;color:var(--apple-blue);font-weight:600;">🔗 已检测到你任教的个人课表课程：${syncNotes.join('、')}，确认后将自动同步调整！</div>`;
+    }
+    document.getElementById('cscope-desc').innerHTML = desc;
+    openModal('modal-class-scope');
+  }
+
+  async function executeClassScope(scope) {
+    const p = pendingClassScope;
+    if (!p) return;
+    pendingClassScope = null;
+    closeModal('modal-class-scope');
     const now = Date.now();
-    const isClass = params.source === 'class';
-    if (isClass && !appState.data.classTimetable.overrides) appState.data.classTimetable.overrides = [];
-    const list = isClass ? appState.data.classTimetable.overrides : appState.data.overrides;
+    const { cls } = p;
+    if (!Array.isArray(cls.overrides)) cls.overrides = [];
+
+    if (scope === 'week') {
+      if (p.mode === 'swap') {
+        upsertCourseMoveOverride(cls.overrides, p.a, p.b.curDate, p.b.curStart, p.b.curEnd, now);
+        upsertCourseMoveOverride(cls.overrides, p.b, p.a.curDate, p.a.curStart, p.a.curEnd, now);
+        applyMyCourseSingleOverride(p.myA, p.a.curDate, p.b.curDate, p.b.curStart, p.b.curEnd, now);
+        applyMyCourseSingleOverride(p.myB, p.b.curDate, p.a.curDate, p.a.curStart, p.a.curEnd, now);
+      } else if (p.mode === 'move') {
+        upsertCourseMoveOverride(cls.overrides, p.item, p.targetDate, p.targetStart, p.targetEnd, now);
+        applyMyCourseSingleOverride(p.myA, p.item.origDate, p.targetDate, p.targetStart, p.targetEnd, now);
+      } else {
+        const mon = getMondayOf(anchorDate);
+        const fromDate = p.origDate || fmtDate(addDays(mon, p.origWd - 1));
+        const toDate = p.nextTargetDate || fmtDate(addDays(mon, p.nextWd - 1));
+        upsertCourseMoveOverride(cls.overrides, {
+          courseId: p.course.id,
+          origDate: fromDate,
+          origStart: p.origStart,
+          origEnd: p.origEnd,
+          title: p.nextTitle,
+          note: p.note || '',
+          overrideId: p.overrideId || null,
+        }, toDate, p.nextStart, p.nextEnd, now);
+        applyMyCourseSingleOverride(p.myA, fromDate, toDate, p.nextStart, p.nextEnd, now);
+      }
+      cls.metaUpdatedAt = now;
+      syncLegacyClassTimetableMirror();
+      render();
+      if (!document.getElementById('modal-timetable').classList.contains('hidden')) renderTimetableManager();
+      await persistAndScheduleSync();
+      showToast(`📅 已设为仅本周调整${(p.myA || p.myB) ? '（已同步个人本周调课）' : ''}`);
+      return;
+    }
+
+    // scope === 'term': 后续至本学期一直生效 -> 永久更新固定「班级课表」并自动同步改「我的授课课表」
+    let syncedCount = 0;
+    if (p.mode === 'swap') {
+      const cA = cls.courses.find(x => x.id === p.a.courseId);
+      const cB = cls.courses.find(x => x.id === p.b.courseId);
+      const wdA = getIsoWeekday(parseDate(p.a.curDate));
+      const wdB = getIsoWeekday(parseDate(p.b.curDate));
+      if (cA) Object.assign(cA, { weekday: wdB, start: p.b.curStart, end: p.b.curEnd, updatedAt: now });
+      if (cB) Object.assign(cB, { weekday: wdA, start: p.a.curStart, end: p.a.curEnd, updatedAt: now });
+      cls.overrides.forEach(o => { if (o.courseId === p.a.courseId || o.courseId === p.b.courseId) { o.deleted = true; o.updatedAt = now; } });
+      if (p.myA) {
+        Object.assign(p.myA, { weekday: wdB, start: p.b.curStart, end: p.b.curEnd, updatedAt: now });
+        (appState.data.overrides || []).forEach(o => { if (o.courseId === p.myA.id) { o.deleted = true; o.updatedAt = now; } });
+        syncedCount++;
+      }
+      if (p.myB) {
+        Object.assign(p.myB, { weekday: wdA, start: p.a.curStart, end: p.a.curEnd, updatedAt: now });
+        (appState.data.overrides || []).forEach(o => { if (o.courseId === p.myB.id) { o.deleted = true; o.updatedAt = now; } });
+        syncedCount++;
+      }
+    } else if (p.mode === 'move') {
+      const cA = cls.courses.find(x => x.id === p.item.courseId);
+      const wdT = getIsoWeekday(parseDate(p.targetDate));
+      if (cA) Object.assign(cA, { weekday: wdT, start: p.targetStart, end: p.targetEnd, updatedAt: now });
+      cls.overrides.forEach(o => { if (o.courseId === p.item.courseId) { o.deleted = true; o.updatedAt = now; } });
+      if (p.myA) {
+        Object.assign(p.myA, { weekday: wdT, start: p.targetStart, end: p.targetEnd, updatedAt: now });
+        (appState.data.overrides || []).forEach(o => { if (o.courseId === p.myA.id) { o.deleted = true; o.updatedAt = now; } });
+        syncedCount++;
+      }
+    } else {
+      Object.assign(p.course, {
+        title: p.nextTitle,
+        weekday: p.nextWd,
+        start: p.nextStart,
+        end: p.nextEnd,
+        parity: p.nextParity || p.course.parity || 'all',
+        color: p.nextColor || p.course.color,
+        customBg: p.nextCustomBg !== undefined ? p.nextCustomBg : p.course.customBg,
+        updatedAt: now,
+      });
+      cls.overrides.forEach(o => { if (o.courseId === p.course.id) { o.deleted = true; o.updatedAt = now; } });
+      if (p.myA) {
+        Object.assign(p.myA, {
+          weekday: p.nextWd,
+          start: p.nextStart,
+          end: p.nextEnd,
+          parity: p.nextParity || p.myA.parity || 'all',
+          updatedAt: now,
+        });
+        (appState.data.overrides || []).forEach(o => { if (o.courseId === p.myA.id) { o.deleted = true; o.updatedAt = now; } });
+        syncedCount++;
+      }
+    }
+    cls.metaUpdatedAt = now;
+    if (syncedCount && appState.data.timetable) appState.data.timetable.metaUpdatedAt = now;
+    syncLegacyClassTimetableMirror();
+    render();
+    if (!document.getElementById('modal-timetable').classList.contains('hidden')) renderTimetableManager();
+    await persistAndScheduleSync();
+    showToast(`📆 本学期课表已永久更新${syncedCount ? `，并已自动同步「我的授课课表」${syncedCount} 门课程` : ''}`);
+  }
+
+  async function applySingleCourseMove(params) {
+    if (params.source === 'class') {
+      promptClassChangeScope({
+        mode: 'move',
+        cls: getActiveClassTt(),
+        item: params,
+        targetDate: params.targetDate,
+        targetStart: params.targetStart,
+        targetEnd: params.targetEnd,
+      });
+      return;
+    }
+    const now = Date.now();
+    const list = appState.data.overrides;
 
     const restored = upsertCourseMoveOverride(list, params, params.targetDate, params.targetStart, params.targetEnd, now);
     render(); await persistAndScheduleSync();
@@ -1314,10 +1592,17 @@
   }
 
   async function applyCourseSwap(a, b) {
+    if (a.source === 'class') {
+      promptClassChangeScope({
+        mode: 'swap',
+        cls: getActiveClassTt(),
+        a,
+        b,
+      });
+      return;
+    }
     const now = Date.now();
-    const isClass = a.source === 'class';
-    if (isClass && !appState.data.classTimetable.overrides) appState.data.classTimetable.overrides = [];
-    const list = isClass ? appState.data.classTimetable.overrides : appState.data.overrides;
+    const list = appState.data.overrides;
 
     upsertCourseMoveOverride(list, a, b.curDate, b.curStart, b.curEnd, now);
     upsertCourseMoveOverride(list, b, a.curDate, a.curStart, a.curEnd, now);
@@ -1338,17 +1623,18 @@
   // ===== 弹窗逻辑 =====
   function openRescheduleModal(ctx) {
     activeRescheduleCtx = ctx;
-    const rsBox = document.querySelector('#modal-reschedule .modal');
-    if (rsBox) { rsBox.style.transform = ''; rsBox.dataset.dragOx = '0'; rsBox.dataset.dragOy = '0'; }
     const isClass = ctx.source === 'class';
-    const cList = isClass ? (appState.data.classTimetable?.courses || []) : (appState.data.timetable?.courses || []);
+    const activeCls = isClass ? getActiveClassTt() : null;
+    const cList = isClass ? (activeCls?.courses || []) : (appState.data.timetable?.courses || []);
     const baseCourse = cList.find(c => c.id === ctx.courseId);
     rsColorCtx = {
       color: (baseCourse && baseCourse.color) || guessColor(ctx.title),
       customBg: (baseCourse && baseCourse.customBg) || '',
     };
     syncRsColorSelection();
-    document.getElementById('rs-modal-title').textContent = isClass ? '🔄 班级课表设置 / 单次调课' : '🔄 个人课表设置 / 单次调课';
+    document.getElementById('rs-modal-title').textContent = isClass
+      ? `🔄 ${activeCls?.className || '班级'}课表设置 / 调课`
+      : '🔄 个人课表设置 / 单次调课';
     document.getElementById('rs-origin-info').innerHTML =
       `原定上课：<strong>${ctx.origDate}（${WEEKDAYS_CN[parseDate(ctx.origDate).getDay()]}）${ctx.origStart}-${ctx.origEnd}</strong>` +
       (ctx.overrideId ? ' · <span style="color:var(--apple-orange);">当前已有单次调课/停课记录</span>' : '');
@@ -1430,65 +1716,185 @@
           renderTimetableManager(); render(); await persistAndScheduleSync();
         });
       });
+      const cntEl = document.getElementById('tt-course-count');
+      if (cntEl) cntEl.textContent = `作息节次表：共 ${periods.length} 个磁吸节次`;
       return;
     }
 
     const isClass = activeTtTab === 'class';
+    const classList = ensureClassTimetables();
+    const activeCls = getActiveClassTt();
+
     document.getElementById('tt-meta-my').style.display = isClass ? 'none' : 'flex';
-    document.getElementById('tt-meta-class').style.display = isClass ? 'flex' : 'none';
+    const clsBar = document.getElementById('tt-class-bar');
+    if (clsBar) clsBar.style.display = isClass ? 'flex' : 'none';
     document.getElementById('tt-term-start').value = appState.data.timetable.termStartDate || '2026-09-01';
-    document.getElementById('tt-class-name').value = appState.data.classTimetable?.className || '902班';
+
+    if (isClass) {
+      const chips = document.getElementById('tt-class-chips');
+      if (chips) {
+        chips.innerHTML = classList.map(ct =>
+          `<button class="seg-btn ${ct.id === activeCls.id ? 'active' : ''}" data-tt-cls="${ct.id}">${escapeHtml(ct.className)}</button>`
+        ).join('');
+        chips.querySelectorAll('[data-tt-cls]').forEach(b => b.addEventListener('click', async () => {
+          appState.data.activeClassId = b.dataset.ttCls;
+          editingTtCourseId = null;
+          syncLegacyClassTimetableMirror();
+          renderTimetableManager();
+          if (appState.config.ui.homeroomMode) render();
+          await persistAndScheduleSync(false);
+        }));
+      }
+      document.getElementById('tt-class-name').value = activeCls.className || '902班';
+      const addClsBtn = document.getElementById('btn-tt-add-cls');
+      if (addClsBtn) {
+        addClsBtn.disabled = classList.length >= 3;
+        addClsBtn.textContent = classList.length >= 3 ? `已达上限(${classList.length}/3)` : `+ 新增班级(${classList.length}/3)`;
+      }
+      const delClsBtn = document.getElementById('btn-tt-del-cls');
+      if (delClsBtn) delClsBtn.disabled = classList.length <= 1;
+    }
 
     const pSel = document.getElementById('tt-add-period');
     pSel.innerHTML = `<option value="">选节次自动填时</option>` +
       getPeriods().map((p, idx) => `<option value="${idx}">${p.label} ${p.start}</option>`).join('');
 
-    const rawList = isClass ? (appState.data.classTimetable?.courses || []) : (appState.data.timetable?.courses || []);
+    const rawList = isClass ? activeCls.courses : (appState.data.timetable?.courses || []);
     const list = rawList.filter(c => !c.deleted).sort((a, b) => a.weekday - b.weekday || toMin(a.start) - toMin(b.start));
+    const cntEl = document.getElementById('tt-course-count');
+    if (cntEl) {
+      cntEl.textContent = isClass
+        ? `${activeCls.className}：共 ${list.length} 节（最多支持管理 3 个班级）`
+        : `我的授课课表：共 ${list.length} 节（双击行内可直接修改）`;
+    }
     const parityText = { all: '每周', odd: '单周', even: '双周' };
     const tbody = document.getElementById('tt-course-tbody');
 
     if (!list.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px;">暂无课程，可点击上方「📥 导入 Excel / Word (.docx) 自动编排」</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px;">暂无课程，可在上方快速添加或点击「✨ 智能导入」</td></tr>';
       return;
     }
-    tbody.innerHTML = list.map(c => `
-      <tr>
-        <td>${WEEKDAYS_ISO[c.weekday]}</td>
-        <td>${c.start} - ${c.end}</td>
+    tbody.innerHTML = list.map(c => {
+      if (c.id === editingTtCourseId) {
+        return `<tr data-row-editing="${c.id}" style="background:rgba(0,122,255,0.10);">
+          <td><select class="select" data-ed-wd style="width:66px;padding:3px 4px;">${[1, 2, 3, 4, 5, 6, 7].map(w => `<option value="${w}" ${w === c.weekday ? 'selected' : ''}>${WEEKDAYS_ISO[w]}</option>`).join('')}</select></td>
+          <td style="white-space:nowrap;"><input type="time" class="input" data-ed-s value="${c.start}" style="width:82px;padding:2px 4px;" />-<input type="time" class="input" data-ed-e value="${c.end}" style="width:82px;padding:2px 4px;" /></td>
+          <td><input type="text" class="input" data-ed-t value="${escapeAttr(c.title)}" style="width:100%;min-width:110px;padding:3px 6px;" /></td>
+          <td><select class="select" data-ed-p style="width:66px;padding:3px 4px;">${Object.entries(parityText).map(([k, v]) => `<option value="${k}" ${(c.parity || 'all') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button class="btn btn-primary" data-save-course="${c.id}" style="padding:2px 8px;font-size:11px;">保存</button>
+            <button class="btn" data-cancel-course style="padding:2px 7px;font-size:11px;">取消</button>
+          </td>
+        </tr>`;
+      }
+      return `<tr data-tt-row="${c.id}" title="双击此行可直接编辑星期、时间、名称或单双周">
+        <td>${WEEKDAYS_ISO[c.weekday] || '周一'}</td>
+        <td style="white-space:nowrap;">${c.start} - ${c.end}</td>
         <td><strong>${escapeHtml(c.title)}</strong></td>
-        <td>${parityText[c.parity || 'all']}</td>
-        <td><button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" data-del-course="${c.id}">删除</button></td>
-      </tr>`).join('');
+        <td>${parityText[c.parity || 'all'] || '每周'}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <button class="btn" style="padding:2px 8px;font-size:11px;" data-edit-course="${c.id}">编辑</button>
+          <button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" data-del-course="${c.id}">删除</button>
+        </td>
+      </tr>`;
+    }).join('');
 
+    tbody.querySelectorAll('[data-tt-row]').forEach(tr => tr.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button')) return;
+      editingTtCourseId = tr.dataset.ttRow;
+      renderTimetableManager();
+      setTimeout(() => tbody.querySelector('[data-ed-t]')?.focus(), 20);
+    }));
+    tbody.querySelectorAll('[data-edit-course]').forEach(btn => btn.addEventListener('click', () => {
+      editingTtCourseId = btn.dataset.editCourse;
+      renderTimetableManager();
+      setTimeout(() => tbody.querySelector('[data-ed-t]')?.focus(), 20);
+    }));
+    tbody.querySelectorAll('[data-cancel-course]').forEach(btn => btn.addEventListener('click', () => {
+      editingTtCourseId = null;
+      renderTimetableManager();
+    }));
+    async function commitTtRowEdit(cid) {
+      const row = tbody.querySelector(`[data-row-editing="${cid}"]`);
+      if (!row) return;
+      const title = row.querySelector('[data-ed-t]').value.trim();
+      const start = row.querySelector('[data-ed-s]').value;
+      const end = row.querySelector('[data-ed-e]').value;
+      const weekday = Number(row.querySelector('[data-ed-wd]').value);
+      const parity = row.querySelector('[data-ed-p]').value;
+      if (!title || !start || !end || toMin(end) <= toMin(start)) {
+        showToast('请填写课程名称和正确起止时间'); return;
+      }
+      const c = rawList.find(x => x.id === cid);
+      editingTtCourseId = null;
+      if (!c) { renderTimetableManager(); return; }
+      const changed = c.title !== title || c.start !== start || c.end !== end || c.weekday !== weekday || (c.parity || 'all') !== parity;
+      if (isClass && changed) {
+        promptClassChangeScope({
+          mode: 'edit',
+          cls: activeCls,
+          course: c,
+          origWd: c.weekday,
+          origStart: c.start,
+          origEnd: c.end,
+          origTitle: c.title,
+          nextWd: weekday,
+          nextStart: start,
+          nextEnd: end,
+          nextTitle: title,
+          nextParity: parity,
+        });
+        return;
+      }
+      const now = Date.now();
+      Object.assign(c, { title, start, end, weekday, parity, color: c.color || guessColor(title), updatedAt: now });
+      if (appState.data.timetable) appState.data.timetable.metaUpdatedAt = now;
+      renderTimetableManager(); render(); await persistAndScheduleSync();
+      showToast('已保存课程修改');
+    }
+    tbody.querySelectorAll('[data-save-course]').forEach(btn => btn.addEventListener('click', () => commitTtRowEdit(btn.dataset.saveCourse)));
+    tbody.querySelectorAll('[data-row-editing] input').forEach(inp => inp.addEventListener('keydown', (e) => {
+      const cid = inp.closest('[data-row-editing]')?.dataset.rowEditing;
+      if (!cid) return;
+      if (e.key === 'Enter') { e.preventDefault(); commitTtRowEdit(cid); }
+      else if (e.key === 'Escape') { editingTtCourseId = null; renderTimetableManager(); }
+    }));
     tbody.querySelectorAll('[data-del-course]').forEach(btn => {
       btn.addEventListener('click', async () => {
+        const now = Date.now();
         const c = rawList.find(x => x.id === btn.dataset.delCourse);
-        if (c) { c.deleted = true; c.updatedAt = Date.now(); renderTimetableManager(); render(); await persistAndScheduleSync(); }
+        if (c) {
+          c.deleted = true; c.updatedAt = now;
+          if (isClass) { activeCls.metaUpdatedAt = now; syncLegacyClassTimetableMirror(); }
+          renderTimetableManager(); render(); await persistAndScheduleSync();
+        }
       });
     });
   }
 
-  function switchSettingsTab(tab) {
-    activeSettingsTab = tab || 'sync';
-    document.querySelectorAll('[data-set-tab]').forEach(b => b.classList.toggle('active', b.dataset.setTab === activeSettingsTab));
-    ['sync', 'theme', 'desktop', 'update'].forEach(t => {
-      const el = document.getElementById(`set-panel-${t}`);
-      if (el) el.style.display = t === activeSettingsTab ? 'flex' : 'none';
-    });
-    const setModal = document.getElementById('modal-settings');
-    if (setModal) setModal.classList.toggle('live-preview-mode', activeSettingsTab === 'theme' || activeSettingsTab === 'desktop');
-  }
-
-  async function openSettingsModal(tab = 'sync') {
-    const cfg = appState.config.webdav, ui = appState.config.ui;
-    const uCfg = appState.config.updater || {};
+  function openSyncModal() {
+    const cfg = appState.config.webdav || {};
     document.getElementById('dav-url').value = cfg.serverUrl || 'https://dav.jianguoyun.com/dav/';
     document.getElementById('dav-user').value = cfg.username || '2465179479@qq.com';
     document.getElementById('dav-folder').value = cfg.folder || 'TeacherCal';
     document.getElementById('dav-pass').value = cfg.password || '';
     document.getElementById('dav-auto').checked = cfg.autoSync !== false;
     document.getElementById('dav-test-result').classList.add('hidden');
+    openModal('modal-sync');
+  }
+
+  function switchSettingsTab(tab) {
+    activeSettingsTab = ['theme', 'cal', 'desktop', 'update'].includes(tab) ? tab : 'theme';
+    document.querySelectorAll('[data-set-tab]').forEach(b => b.classList.toggle('active', b.dataset.setTab === activeSettingsTab));
+    ['theme', 'cal', 'desktop', 'update'].forEach(t => {
+      const el = document.getElementById(`set-panel-${t}`);
+      if (el) el.style.display = t === activeSettingsTab ? 'flex' : 'none';
+    });
+  }
+
+  async function openSettingsModal(tab = 'theme') {
+    const ui = appState.config.ui;
+    const uCfg = appState.config.updater || {};
 
     const ver = await window.SyncBridge.getAppVersion();
     document.getElementById('upd-cur-ver').textContent = `v${ver}`;
@@ -1574,7 +1980,7 @@
     const box = document.getElementById('srch-results');
     const works = (appState.data.works || []).filter(w => !w.deleted);
     const myCourses = (appState.data.timetable?.courses || []).filter(c => !c.deleted);
-    const classCourses = (appState.data.classTimetable?.courses || []).filter(c => !c.deleted);
+    const allClassTts = ensureClassTimetables();
     const items = [];
 
     works.forEach(w => {
@@ -1590,12 +1996,14 @@
         items.push({ kind: '📚 课表', title: c.title, sub: `${WEEKDAYS_ISO[c.weekday]} ${c.start}-${c.end}`, date: dStr });
       }
     });
-    classCourses.forEach(c => {
-      if (kw && c.title.toLowerCase().includes(kw)) {
-        const mon = getMondayOf(anchorDate);
-        const dStr = fmtDate(addDays(mon, (c.weekday || 1) - 1));
-        items.push({ kind: '🏫 班级课', title: c.title, sub: `${WEEKDAYS_ISO[c.weekday]} ${c.start}-${c.end}`, date: dStr });
-      }
+    allClassTts.forEach(ct => {
+      (ct.courses || []).filter(c => !c.deleted).forEach(c => {
+        if (kw && (`${ct.className} ${c.title}`).toLowerCase().includes(kw)) {
+          const mon = getMondayOf(anchorDate);
+          const dStr = fmtDate(addDays(mon, (c.weekday || 1) - 1));
+          items.push({ kind: `🏫 ${ct.className}`, title: c.title, sub: `${WEEKDAYS_ISO[c.weekday]} ${c.start}-${c.end}`, date: dStr });
+        }
+      });
     });
 
     if (!items.length) {
@@ -2170,7 +2578,8 @@
 
   function openSmartImportModal(target = 'class') {
     activeImportTarget = target;
-    const className = appState.data.classTimetable?.className || '902班';
+    const activeCls = getActiveClassTt();
+    const className = activeCls?.className || '902班';
     document.getElementById('si-modal-title').textContent = target === 'class'
       ? `✨ 智能导入「${className}」班级课表（三合一）`
       : '✨ 智能导入个人授课课表（三合一）';
@@ -2199,13 +2608,20 @@
     }
 
     const now = Date.now();
+    const activeCls = activeImportTarget === 'class' ? getActiveClassTt() : null;
     const targetArr = activeImportTarget === 'class'
-      ? appState.data.classTimetable.courses
+      ? activeCls.courses
       : appState.data.timetable.courses;
 
     // 软删除旧课表并写入自动分配好的新课表
     targetArr.forEach(c => { c.deleted = true; c.updatedAt = now; });
     targetArr.push(...res.courses);
+    if (activeCls) {
+      activeCls.metaUpdatedAt = now;
+      syncLegacyClassTimetableMirror();
+    } else if (appState.data.timetable) {
+      appState.data.timetable.metaUpdatedAt = now;
+    }
 
     // 自动识别时间并同步调整最左侧时间轴与磁吸节次表
     const autoAdjust = document.getElementById('si-auto-adjust-time').checked;
@@ -2236,8 +2652,14 @@
     showToast(`已自动识别并编排 ${res.courses.length} 节课`);
   }
 
-  function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+  function openModal(id) {
+    const bd = document.getElementById(id);
+    if (!bd) return;
+    const box = bd.querySelector('.modal');
+    if (box) { box.style.transform = ''; box.dataset.dragOx = '0'; box.dataset.dragOy = '0'; }
+    bd.classList.remove('hidden');
+  }
+  function closeModal(id) { document.getElementById(id)?.classList.add('hidden'); }
 
   // ===== 绑定所有事件 =====
   function bindGlobalEvents() {
@@ -2337,12 +2759,12 @@
       openModal('modal-cn-cal');
     });
 
-    // 顶部极简图标区：统一齿轮菜单（整合插件/手机/主菜单） + 合并后的云同步与账户图标
+    // 顶部极简图标区：统一齿轮菜单 + 独立坚果云同步与账户图标
     document.getElementById('btn-plugin-menu').addEventListener('click', (e) => {
       e.stopPropagation();
       toggleDropdownMenu('menu-plugin', e.currentTarget);
     });
-    document.getElementById('btn-cloud-icon').addEventListener('click', () => openSettingsModal('sync'));
+    document.getElementById('btn-cloud-icon').addEventListener('click', openSyncModal);
     const closeWinBtn = document.getElementById('btn-close-window');
     if (closeWinBtn) {
       closeWinBtn.addEventListener('click', async () => {
@@ -2378,13 +2800,14 @@
       setTimeout(() => document.getElementById('ai-nl-input')?.focus(), 40);
     });
 
-    // ⚙ 统一菜单动作绑定（整合课表与待办 / 查找与视图 / 多端与数据 / 系统与关于）
+    // ⚙ 统一菜单动作绑定（课表与待办 / 查找与数据 / 系统）
     document.querySelectorAll('[data-plugin-act]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const act = btn.dataset.pluginAct;
         closeAllMenus();
         if (act === 'schedule-mgr') {
           activeTtTab = appState.config.ui.homeroomMode ? 'class' : 'my';
+          editingTtCourseId = null;
           renderTimetableManager();
           openModal('modal-timetable');
         } else if (act === 'import') {
@@ -2400,7 +2823,7 @@
           openModal('modal-weekly-report');
         } else if (act === 'search') {
           openSearchModal(false);
-        } else if (act === 'theme') {
+        } else if (act === 'sys-settings' || act === 'theme') {
           openSettingsModal('theme');
         } else if (act === 'privacy-mask') {
           isPrivacyMasked = !isPrivacyMasked;
@@ -2408,27 +2831,10 @@
           const pf = document.getElementById('menu-privacy-flag');
           if (pf) pf.textContent = isPrivacyMasked ? '🔒' : '🔓';
           showToast(isPrivacyMasked ? '🔒 已开启隐私保护：日历内容已模糊隐藏' : '🔓 已恢复显示日历内容');
-        } else if (act === 'resize-unlock') {
-          if (isUiLocked) {
-            applyLockUi(false);
-            appState.config.ui.locked = false;
-            await window.SyncBridge.setDesktopOptions({ locked: false });
-            await persistAndScheduleSync(false);
-          }
-          showToast('已解锁，可拖动顶部移动窗口、拖动四边任意调整长宽高');
-        } else if (act === 'phone-lan') {
-          await openSettingsModal('desktop');
-          setTimeout(() => document.getElementById('lan-url-box')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
         } else if (act === 'export') {
           exportAllJsonBackup();
         } else if (act === 'print') {
           window.print();
-        } else if (act === 'cal-settings') {
-          openSettingsModal('desktop');
-        } else if (act === 'features') {
-          openModal('modal-features');
-        } else if (act === 'about-update') {
-          openSettingsModal('update');
         } else if (act === 'hide-window') {
           if (window.SyncBridge.mode === 'desktop') {
             await window.SyncBridge.windowAction('hide');
@@ -2492,18 +2898,30 @@
       });
     });
 
-    ['rng-bg-alpha', 'rng-bg-alpha-set'].forEach(id => {
-      const sliderEl = document.getElementById(id);
-      if (sliderEl) {
-        sliderEl.addEventListener('pointerdown', () => document.getElementById('modal-settings')?.classList.add('adjusting-alpha'));
-      }
-    });
+    const bgAlphaSlider = document.getElementById('rng-bg-alpha-set');
+    if (bgAlphaSlider) {
+      bgAlphaSlider.addEventListener('pointerdown', () => document.getElementById('modal-settings')?.classList.add('adjusting-alpha'));
+    }
     window.addEventListener('pointerup', () => document.getElementById('modal-settings')?.classList.remove('adjusting-alpha'));
 
-    // 互斥「班主任班级课表」勾选逻辑 + 横幅内三合一智能导入按钮
+    // 互斥「班级课表」勾选逻辑 + 横幅内多班级新建/管理/导入按钮
     document.getElementById('chk-homeroom').addEventListener('change', (e) => setHomeroomMode(e.target.checked));
     document.getElementById('btn-exit-homeroom').addEventListener('click', () => setHomeroomMode(false));
     document.getElementById('btn-homeroom-smart-import').addEventListener('click', () => openSmartImportModal('class'));
+    document.getElementById('btn-homeroom-add-cls')?.addEventListener('click', async () => {
+      const nc = addNewClassTimetable();
+      if (nc) {
+        render();
+        await persistAndScheduleSync(false);
+        showToast(`已新增「${nc.className}」，可直接点击导入或管理录入该班课表`);
+      }
+    });
+    document.getElementById('btn-homeroom-manage')?.addEventListener('click', () => {
+      activeTtTab = 'class';
+      editingTtCourseId = null;
+      renderTimetableManager();
+      openModal('modal-timetable');
+    });
 
     // 独立开关：是否展示晚自习 & 是否展示周末
     document.getElementById('btn-toggle-evening').addEventListener('click', async () => {
@@ -2541,20 +2959,16 @@
       appState.config.ui.magnetSnap = document.getElementById('chk-magnet').checked;
       appState.config.ui.courseOpacity = Number(document.getElementById('rng-course-opacity').value);
       appState.config.ui.workOpacity = Number(document.getElementById('rng-work-opacity').value);
-      appState.config.ui.bgAlpha = Number(document.getElementById('rng-bg-alpha').value);
-      const setSlider = document.getElementById('rng-bg-alpha-set');
-      if (setSlider) setSlider.value = appState.config.ui.bgAlpha;
       render(); await persistAndScheduleSync(false);
     };
     document.getElementById('chk-magnet').addEventListener('change', saveSimpleUi);
-    ['rng-course-opacity', 'rng-work-opacity', 'rng-bg-alpha'].forEach(id => {
+    ['rng-course-opacity', 'rng-work-opacity'].forEach(id => {
       document.getElementById(id).addEventListener('input', saveSimpleUi);
     });
     const bgAlphaSetEl = document.getElementById('rng-bg-alpha-set');
     if (bgAlphaSetEl) {
       bgAlphaSetEl.addEventListener('input', async (e) => {
         appState.config.ui.bgAlpha = Number(e.target.value);
-        document.getElementById('rng-bg-alpha').value = appState.config.ui.bgAlpha;
         render(); await persistAndScheduleSync(false);
       });
     }
@@ -2743,7 +3157,11 @@
 
       if (document.getElementById('bb-remap-courses').checked) {
         remapCoursesByPeriods(appState.data.timetable.courses || [], oldPeriods, newPeriods, now);
-        remapCoursesByPeriods(appState.data.classTimetable?.courses || [], oldPeriods, newPeriods, now);
+        ensureClassTimetables().forEach(ct => {
+          remapCoursesByPeriods(ct.courses || [], oldPeriods, newPeriods, now);
+          ct.metaUpdatedAt = now;
+        });
+        syncLegacyClassTimetableMirror();
       }
 
       appState.data.timetable.periods = newPeriods;
@@ -2819,7 +3237,8 @@
       const nextNote = document.getElementById('rs-note').value.trim();
       const now = Date.now();
       const isClass = activeRescheduleCtx.source === 'class';
-      const cArr = isClass ? (appState.data.classTimetable?.courses || []) : (appState.data.timetable?.courses || []);
+      const activeCls = isClass ? getActiveClassTt() : null;
+      const cArr = isClass ? (activeCls?.courses || []) : (appState.data.timetable?.courses || []);
       const baseC = cArr.find(c => c.id === activeRescheduleCtx.courseId);
       let colorUpdated = false;
       if (baseC) {
@@ -2839,12 +3258,37 @@
             }
           });
         }
+        if (colorUpdated) {
+          if (isClass && activeCls) { activeCls.metaUpdatedAt = now; syncLegacyClassTimetableMirror(); }
+          else if (appState.data.timetable) appState.data.timetable.metaUpdatedAt = now;
+        }
       }
       closeModal('modal-reschedule');
-      const timeChanged = targetDate !== activeRescheduleCtx.curDate || targetStart !== activeRescheduleCtx.curStart || targetEnd !== activeRescheduleCtx.curEnd || nextTitle !== activeRescheduleCtx.title || nextNote !== (activeRescheduleCtx.note || '');
-      if (!timeChanged && colorUpdated) {
+      const timeChanged = targetDate !== activeRescheduleCtx.curDate || targetStart !== activeRescheduleCtx.curStart || targetEnd !== activeRescheduleCtx.curEnd || nextTitle !== activeRescheduleCtx.title;
+      const noteOnlyChanged = !timeChanged && nextNote !== (activeRescheduleCtx.note || '');
+      if (!timeChanged && !noteOnlyChanged && colorUpdated) {
         render(); await persistAndScheduleSync();
         showToast('🎨 已更新课程背景色');
+        return;
+      }
+      if (isClass && baseC && timeChanged) {
+        promptClassChangeScope({
+          mode: 'edit',
+          cls: activeCls,
+          course: baseC,
+          origDate: activeRescheduleCtx.origDate,
+          origWd: getIsoWeekday(parseDate(activeRescheduleCtx.origDate)),
+          origStart: activeRescheduleCtx.origStart,
+          origEnd: activeRescheduleCtx.origEnd,
+          origTitle: baseC.title,
+          nextTargetDate: targetDate,
+          nextWd: getIsoWeekday(parseDate(targetDate)),
+          nextStart: targetStart,
+          nextEnd: targetEnd,
+          nextTitle,
+          note: nextNote,
+          overrideId: activeRescheduleCtx.overrideId || null,
+        });
         return;
       }
       await applySingleCourseMove({
@@ -2859,13 +3303,16 @@
       if (!activeRescheduleCtx) return;
       const now = Date.now();
       const isClass = activeRescheduleCtx.source === 'class';
-      const list = isClass ? appState.data.classTimetable.overrides : appState.data.overrides;
+      const activeCls = isClass ? getActiveClassTt() : null;
+      if (isClass && !activeCls.overrides) activeCls.overrides = [];
+      const list = isClass ? activeCls.overrides : appState.data.overrides;
       let ov = activeRescheduleCtx.overrideId
         ? list.find(o => o.id === activeRescheduleCtx.overrideId)
         : list.find(o => o.courseId === activeRescheduleCtx.courseId && o.origDate === activeRescheduleCtx.origDate);
       if (!ov) {
         list.push({ id: uid('ov'), courseId: activeRescheduleCtx.courseId, origDate: activeRescheduleCtx.origDate, origStart: activeRescheduleCtx.origStart, origEnd: activeRescheduleCtx.origEnd, type: 'cancel', title: activeRescheduleCtx.title, updatedAt: now, deleted: false });
       } else { ov.type = 'cancel'; ov.deleted = false; ov.updatedAt = now; }
+      if (isClass && activeCls) { activeCls.metaUpdatedAt = now; syncLegacyClassTimetableMirror(); }
       closeModal('modal-reschedule'); render(); await persistAndScheduleSync();
       showToast('已标记为单次停课');
     });
@@ -2873,32 +3320,59 @@
     document.getElementById('btn-rs-restore').addEventListener('click', async () => {
       if (!activeRescheduleCtx?.overrideId) return;
       const isClass = activeRescheduleCtx.source === 'class';
-      const list = isClass ? appState.data.classTimetable.overrides : appState.data.overrides;
+      const activeCls = isClass ? getActiveClassTt() : null;
+      const list = isClass ? (activeCls?.overrides || []) : appState.data.overrides;
       const ov = list.find(o => o.id === activeRescheduleCtx.overrideId);
       if (ov) { ov.deleted = true; ov.updatedAt = Date.now(); }
+      if (isClass && activeCls) { activeCls.metaUpdatedAt = Date.now(); syncLegacyClassTimetableMirror(); }
       closeModal('modal-reschedule'); render(); await persistAndScheduleSync();
       showToast('已恢复原课表');
     });
 
-    // 顶层待办弹窗 + AI 自动识别填充 + 拖动移位
-    function makeModalDraggable(modalId) {
-      const box = document.querySelector(`#${modalId} .modal`);
-      const hdr = document.querySelector(`#${modalId} .modal-header`);
-      if (!box || !hdr) return;
-      hdr.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('button')) return;
-        const sx = e.clientX, sy = e.clientY;
-        const ox = Number(box.dataset.dragOx || 0), oy = Number(box.dataset.dragOy || 0);
-        function onMove(ev) {
-          const nx = ox + ev.clientX - sx, ny = oy + ev.clientY - sy;
-          box.dataset.dragOx = String(nx); box.dataset.dragOy = String(ny);
-          box.style.transform = `translate(${nx}px, ${ny}px)`;
+    document.getElementById('btn-cscope-week')?.addEventListener('click', () => executeClassScope('week'));
+    document.getElementById('btn-cscope-term')?.addEventListener('click', () => executeClassScope('term'));
+
+    // 全局让软件内所有弹窗标题栏均可用鼠标自由拖动，且每次打开均从固定上方正中央弹出
+    function enableAllModalsDraggable() {
+      document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+        const box = backdrop.querySelector('.modal');
+        const hdr = backdrop.querySelector('.modal-header');
+        if (!box || !hdr || hdr.dataset.dragBound) return;
+        hdr.dataset.dragBound = '1';
+
+        let wasHidden = backdrop.classList.contains('hidden');
+        if (typeof MutationObserver !== 'undefined') {
+          new MutationObserver(() => {
+            const nowHidden = backdrop.classList.contains('hidden');
+            if (wasHidden && !nowHidden) {
+              box.style.transform = '';
+              box.dataset.dragOx = '0';
+              box.dataset.dragOy = '0';
+            }
+            wasHidden = nowHidden;
+          }).observe(backdrop, { attributes: true, attributeFilter: ['class'] });
         }
-        function onUp() { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); }
-        window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
+
+        hdr.addEventListener('pointerdown', (e) => {
+          if (e.target.closest('button, input, select, a')) return;
+          const sx = e.clientX, sy = e.clientY;
+          const ox = Number(box.dataset.dragOx || 0), oy = Number(box.dataset.dragOy || 0);
+          function onMove(ev) {
+            const nx = ox + ev.clientX - sx, ny = oy + ev.clientY - sy;
+            box.dataset.dragOx = String(nx);
+            box.dataset.dragOy = String(ny);
+            box.style.transform = `translate(${nx}px, ${ny}px)`;
+          }
+          function onUp() {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+          }
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
       });
     }
-    ['modal-work', 'modal-reschedule', 'modal-ai-platform', 'modal-day-mode', 'modal-cn-cal'].forEach(makeModalDraggable);
+    enableAllModalsDraggable();
 
     function fillWorkModalFromAi() {
       const raw = document.getElementById('wk-ai-raw')?.value || '';
@@ -2936,9 +3410,9 @@
       showToast('已删除事项');
     });
 
-    // 课表与作息管理弹窗
+    // 课表与作息管理弹窗（支持双击编辑 + 多班级管理）
     document.querySelectorAll('[data-tt-tab]').forEach(btn => {
-      btn.addEventListener('click', () => { activeTtTab = btn.dataset.ttTab; renderTimetableManager(); });
+      btn.addEventListener('click', () => { activeTtTab = btn.dataset.ttTab; editingTtCourseId = null; renderTimetableManager(); });
     });
     document.getElementById('tt-add-period').addEventListener('change', (e) => {
       if (e.target.value === '') return;
@@ -2953,27 +3427,61 @@
       appState.data.timetable.metaUpdatedAt = Date.now();
       render(); await persistAndScheduleSync();
     });
-    document.getElementById('tt-class-name').addEventListener('change', async (e) => {
-      appState.data.classTimetable.className = e.target.value.trim() || '902班';
-      appState.data.classTimetable.metaUpdatedAt = Date.now();
-      render(); await persistAndScheduleSync();
+    const renameActiveClass = async () => {
+      const activeCls = getActiveClassTt();
+      const nextName = document.getElementById('tt-class-name').value.trim();
+      if (!nextName) return;
+      activeCls.className = nextName;
+      activeCls.metaUpdatedAt = Date.now();
+      syncLegacyClassTimetableMirror();
+      renderTimetableManager(); render(); await persistAndScheduleSync();
+      showToast(`已将班级更名为「${nextName}」`);
+    };
+    document.getElementById('tt-class-name').addEventListener('change', renameActiveClass);
+    document.getElementById('btn-tt-rename-cls')?.addEventListener('click', renameActiveClass);
+    document.getElementById('btn-tt-add-cls')?.addEventListener('click', async () => {
+      const nc = addNewClassTimetable();
+      if (nc) {
+        renderTimetableManager(); render(); await persistAndScheduleSync();
+        showToast(`已新建班级「${nc.className}」（可点智能导入或下方添加课程）`);
+      }
+    });
+    document.getElementById('btn-tt-del-cls')?.addEventListener('click', async () => {
+      const list = ensureClassTimetables();
+      if (list.length <= 1) { showToast('至少保留 1 个班级课表'); return; }
+      const cur = getActiveClassTt();
+      appState.data.classTimetables = list.filter(x => x.id !== cur.id);
+      appState.data.activeClassId = appState.data.classTimetables[0].id;
+      editingTtCourseId = null;
+      syncLegacyClassTimetableMirror();
+      renderTimetableManager(); render(); await persistAndScheduleSync();
+      showToast(`已删除班级「${cur.className}」`);
     });
     document.getElementById('btn-tt-add').addEventListener('click', async () => {
       const weekday = Number(document.getElementById('tt-add-day').value);
       const start = document.getElementById('tt-add-start').value, end = document.getElementById('tt-add-end').value;
       const title = document.getElementById('tt-add-title').value.trim();
+      const parity = document.getElementById('tt-add-parity')?.value || 'all';
       if (!title || toMin(end) <= toMin(start)) { showToast('请输入课程名称与正确起止时间'); return; }
       const useCustomCol = document.getElementById('tt-add-use-color')?.checked;
       const customBg = useCustomCol ? (document.getElementById('tt-add-color')?.value || '') : '';
-      const targetArr = activeTtTab === 'class' ? appState.data.classTimetable.courses : appState.data.timetable.courses;
-      targetArr.push({ id: uid(activeTtTab === 'class' ? 'cc' : 'c'), weekday, start, end, title, room: '', parity: 'all', color: guessColor(title), customBg, updatedAt: Date.now(), deleted: false });
+      const now = Date.now();
+      const activeCls = activeTtTab === 'class' ? getActiveClassTt() : null;
+      const targetArr = activeCls ? activeCls.courses : appState.data.timetable.courses;
+      targetArr.push({ id: uid(activeTtTab === 'class' ? 'cc' : 'c'), weekday, start, end, title, room: '', parity, color: guessColor(title), customBg, updatedAt: now, deleted: false });
+      if (activeCls) { activeCls.metaUpdatedAt = now; syncLegacyClassTimetableMirror(); }
+      else if (appState.data.timetable) appState.data.timetable.metaUpdatedAt = now;
       document.getElementById('tt-add-title').value = '';
       renderTimetableManager(); render(); await persistAndScheduleSync();
     });
     document.getElementById('btn-tt-clear').addEventListener('click', async () => {
       const now = Date.now();
-      const targetArr = activeTtTab === 'class' ? appState.data.classTimetable.courses : appState.data.timetable.courses;
+      const activeCls = activeTtTab === 'class' ? getActiveClassTt() : null;
+      const targetArr = activeCls ? activeCls.courses : appState.data.timetable.courses;
       targetArr.forEach(c => { c.deleted = true; c.updatedAt = now; });
+      if (activeCls) { activeCls.metaUpdatedAt = now; syncLegacyClassTimetableMirror(); }
+      else if (appState.data.timetable) appState.data.timetable.metaUpdatedAt = now;
+      editingTtCourseId = null;
       renderTimetableManager(); render(); await persistAndScheduleSync();
       showToast('已清空当前课表');
     });
@@ -3055,7 +3563,7 @@
     });
 
     if (window.desktopApi) {
-      window.desktopApi.onStateUpdated((next) => { appState = next; render(); });
+      window.desktopApi.onStateUpdated((next) => { appState = next; ensureClassTimetables(); render(); });
       window.desktopApi.onLockChanged((locked) => { applyLockUi(locked); });
     }
 
@@ -3251,6 +3759,7 @@
   async function init() {
     bindGlobalEvents();
     appState = await window.SyncBridge.loadState();
+    ensureClassTimetables();
     isUiLocked = !!appState?.config?.ui?.locked;
     render();
     pushAndroidWidgetSummary();

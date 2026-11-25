@@ -93,11 +93,16 @@
       <div id="inbox-list" style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;"></div>
     </div>
 
-    <!-- 班主任专属模式横幅（内置三合一智能导入按钮：Excel / Word / 拍照识别） -->
+    <!-- 班主任专属模式横幅（多班级切换（上限3）+ 三合一智能导入） -->
     <div class="homeroom-banner" id="homeroom-banner">
-      <span id="homeroom-banner-text">🏫 班主任专属视图：正在显示 902班 全周所有课程（已自动隐藏个人课表与待办）</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span id="homeroom-banner-text">🏫 班级课表（★ 为我任教课程）：</span>
+        <div class="seg-group" id="homeroom-class-tabs"></div>
+        <button class="btn lock-disabled" id="btn-homeroom-add-cls" style="padding:2px 8px;font-size:11px;">+ 新增班级(上限3)</button>
+        <button class="btn lock-disabled" id="btn-homeroom-manage" style="padding:2px 8px;font-size:11px;">📋 管理课表</button>
+      </div>
       <div style="display:flex;align-items:center;gap:6px;">
-        <button class="btn btn-primary lock-disabled" id="btn-homeroom-smart-import" style="padding:3px 12px;">✨ 导入班级课表（Excel / Word / 拍照）</button>
+        <button class="btn btn-primary lock-disabled" id="btn-homeroom-smart-import" style="padding:3px 12px;">✨ 导入当前班级课表</button>
         <button class="btn" id="btn-exit-homeroom" style="padding:3px 10px;">返回个人双图层</button>
       </div>
     </div>
@@ -228,25 +233,25 @@
     </div>
   </div>
 
-  <!-- 弹窗 3：课表与作息管理（支持 Excel / Word 自动编排 + 班主任班级课表 + 磁吸节次表） -->
+  <!-- 弹窗 3：课表与作息管理（双击行内直接编辑 + 最多 3 个班级课表 + 磁吸节次表） -->
   <div class="modal-backdrop hidden" id="modal-timetable">
-    <div class="modal modal-lg">
+    <div class="modal modal-lg" style="max-width:760px;">
       <div class="modal-header">
-        <span>📋 课表管理（支持 Excel / Word 自动编排 · 作息节次磁吸）</span>
+        <span>📋 课表管理（双击课程行可直接编辑 · 顶部可拖动）</span>
         <button class="btn btn-icon" data-close="modal-timetable">✕</button>
       </div>
       <div class="modal-body">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div class="seg-group">
             <button class="seg-btn active" data-tt-tab="my">我的授课课表</button>
-            <button class="seg-btn" data-tt-tab="class">班级课表</button>
+            <button class="seg-btn" data-tt-tab="class">班级课表（最多3个）</button>
             <button class="seg-btn" data-tt-tab="periods">🧲 作息节次表（磁吸基准）</button>
           </div>
           <button class="btn" id="btn-excel-template">📤 导出标准模板.xlsx</button>
         </div>
 
         <!-- 子标签 A/B：个人课表 & 班主任班级课表 -->
-        <div id="tt-panel-courses" style="display:flex;flex-direction:column;gap:10px;">
+        <div id="tt-panel-courses" style="display:flex;flex-direction:column;gap:9px;">
           <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;">
             <div style="display:flex;flex-wrap:wrap;gap:6px;">
               <button class="btn btn-primary" id="btn-schedule-import">✨ 智能导入（Excel / Word / 拍照识别）</button>
@@ -256,32 +261,46 @@
               <span style="color:var(--text-sub);">学期第1周：</span>
               <input type="date" class="input" id="tt-term-start" style="width:auto;padding:4px 8px;" />
             </div>
-            <div id="tt-meta-class" style="display:none;align-items:center;gap:6px;font-size:12px;">
-              <span style="color:var(--text-sub);">班级名称：</span>
-              <input type="text" class="input" id="tt-class-name" style="width:110px;padding:4px 8px;" placeholder="如：902班" />
+          </div>
+
+          <!-- 多班级切换管理栏（最多 3 个班级） -->
+          <div id="tt-class-bar" style="display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--border-soft);background:var(--glass-pill);">
+            <div class="class-bar-chips">
+              <span style="font-size:11.5px;color:var(--text-muted);font-weight:600;">切换班级：</span>
+              <div class="seg-group" id="tt-class-chips"></div>
+              <button class="btn" id="btn-tt-add-cls" style="padding:3px 9px;font-size:11.5px;">+ 新增班级</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <input type="text" class="input" id="tt-class-name" style="width:100px;padding:3px 7px;font-size:11.5px;" placeholder="班级名称" />
+              <button class="btn" id="btn-tt-rename-cls" style="padding:3px 8px;font-size:11.5px;">改名</button>
+              <button class="btn btn-danger" id="btn-tt-del-cls" style="padding:3px 8px;font-size:11.5px;">删班</button>
             </div>
           </div>
 
-          <!-- 手动添加一节课（按节次或手选时间 + 可选背景色） -->
-          <div style="padding:10px;border-radius:12px;border:1px solid var(--border-soft);background:var(--glass-pill);display:grid;grid-template-columns:72px 104px 82px 82px 1fr 94px 66px;gap:6px;align-items:center;">
-            <select id="tt-add-day" class="select">
+          <!-- 手动添加一节课（按节次或手选时间 + 单双周 + 可选背景色） -->
+          <div style="padding:9px 10px;border-radius:12px;border:1px solid var(--border-soft);background:var(--glass-pill);display:grid;grid-template-columns:66px 96px 76px 76px 1fr 68px 86px 64px;gap:5px;align-items:center;">
+            <select id="tt-add-day" class="select" style="padding:5px 4px;">
               <option value="1">周一</option><option value="2">周二</option><option value="3">周三</option>
               <option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="7">周日</option>
             </select>
-            <select id="tt-add-period" class="select" title="选择节次自动填入上下课时间"></select>
-            <input type="time" id="tt-add-start" class="input" value="08:00" />
-            <input type="time" id="tt-add-end" class="input" value="08:40" />
+            <select id="tt-add-period" class="select" style="padding:5px 4px;" title="选择节次自动填入上下课时间"></select>
+            <input type="time" id="tt-add-start" class="input" style="padding:5px 4px;" value="08:00" />
+            <input type="time" id="tt-add-end" class="input" style="padding:5px 4px;" value="08:40" />
             <input type="text" id="tt-add-title" class="input" placeholder="如：902 历史 / 语文(林)" />
+            <select id="tt-add-parity" class="select" style="padding:5px 4px;">
+              <option value="all">每周</option><option value="odd">单周</option><option value="even">双周</option>
+            </select>
             <div style="display:flex;align-items:center;gap:4px;">
               <input type="color" id="tt-add-color" class="skin-color-picker" value="#dbeafe" title="可选自定义课程背景色" />
-              <label class="layer-ctrl" style="font-size:11px;" title="勾选后使用左侧自定义颜色"><input type="checkbox" id="tt-add-use-color" /> 自定色</label>
+              <label class="layer-ctrl" style="font-size:11px;" title="勾选后使用左侧自定义颜色"><input type="checkbox" id="tt-add-use-color" /> 自定</label>
             </div>
-            <button class="btn btn-primary" id="btn-tt-add">+ 添加</button>
+            <button class="btn btn-primary" id="btn-tt-add" style="padding:5px 8px;">+ 添加</button>
           </div>
 
-          <div style="max-height:280px;overflow-y:auto;">
+          <div style="font-size:11.5px;color:var(--apple-blue);padding:0 2px;">💡 双击下方任意一行课表即可直接编辑星期、起止时间、课程名或单双周（按回车保存，Esc 取消）</div>
+          <div style="max-height:270px;overflow-y:auto;border:1px solid var(--border-soft);border-radius:10px;">
             <table class="course-list-table">
-              <thead><tr><th>星期</th><th>起止时间</th><th>课程名称</th><th>单双周</th><th>操作</th></tr></thead>
+              <thead><tr><th>星期</th><th>起止时间</th><th>课程名称</th><th>单双周</th><th style="text-align:right;">操作</th></tr></thead>
               <tbody id="tt-course-tbody"></tbody>
             </table>
           </div>
@@ -307,59 +326,68 @@
         </div>
       </div>
       <div class="modal-footer">
-        <span style="font-size:12px;color:var(--text-muted);">支持 .xlsx / .xls / .csv / .docx（Word 表格课表）自动识别编排并同步至坚果云。</span>
+        <span id="tt-course-count" style="font-size:12px;color:var(--text-muted);">支持 .xlsx / .xls / .csv / .docx 自动识别编排并同步至坚果云。</span>
         <button class="btn btn-primary" data-close="modal-timetable">完成</button>
       </div>
     </div>
   </div>
 
-  <!-- 弹窗 4：统一「⚙ 设置」弹窗（坚果云同步 / 在线检查更新 / 桌面与手机连接） -->
-  <div class="modal-backdrop hidden" id="modal-settings">
-    <div class="modal modal-lg" style="max-width:560px;">
+  <!-- 弹窗 4：独立「☁ 坚果云同步与账户设置」弹窗（从系统偏好设置分离，职责单一） -->
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-sync">
+    <div class="modal" style="max-width:490px;">
       <div class="modal-header">
-        <span>⚙ 设置</span>
+        <span>☁ 坚果云同步与账户设置</span>
+        <button class="btn btn-icon" data-close="modal-sync">✕</button>
+      </div>
+      <div class="modal-body" style="gap:11px;">
+        <div class="hint-box" id="sync-detail-banner">
+          四文件免费自动双向同步至 <code>/TeacherCal/</code>（个人课表、单次调课、顶层待办、多班级课表（最多3个））。<br/>
+          在坚果云网页版 → 账户信息 → 安全选项 → 第三方应用管理 → 添加应用，复制<strong>应用密码（同步码）</strong>填在下方。
+        </div>
+        <div class="field">
+          <label>WebDAV 服务器地址</label>
+          <input type="text" class="input" id="dav-url" value="https://dav.jianguoyun.com/dav/" />
+        </div>
+        <div class="field-row">
+          <div class="field"><label>坚果云账号（邮箱）</label><input type="text" class="input" id="dav-user" value="2465179479@qq.com" /></div>
+          <div class="field"><label>同步目录名</label><input type="text" class="input" id="dav-folder" value="TeacherCal" /></div>
+        </div>
+        <div class="field">
+          <label>第三方应用密码（同步码，仅保存于本机）</label>
+          <input type="password" class="input" id="dav-pass" placeholder="粘贴坚果云生成的第三方应用密码" />
+        </div>
+        <label class="layer-ctrl"><input type="checkbox" id="dav-auto" checked /> 开启自动双向同步（修改2秒后静默上传 + 定时拉取）</label>
+        <div id="dav-test-result" class="hint-box hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="btn-dav-test">测试连接</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" id="btn-dav-sync-now">🔄 立即同步</button>
+          <button class="btn btn-primary" id="btn-dav-save">保存同步配置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 5：「⚙ 系统偏好设置」弹窗（4 个职责清晰、零重叠页签：外观与皮肤 / 日历与排课 / 桌面与提醒 / 更新与关于） -->
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-settings">
+    <div class="modal modal-lg" style="max-width:550px;">
+      <div class="modal-header">
+        <span>⚙ 系统偏好设置</span>
         <button class="btn btn-icon" data-close="modal-settings">✕</button>
       </div>
       <div class="modal-body">
         <div class="seg-group" style="align-self:flex-start;">
-          <button class="seg-btn active" data-set-tab="sync">☁ 账户与坚果云同步</button>
-          <button class="seg-btn" data-set-tab="theme">👕 主题皮肤</button>
-          <button class="seg-btn" data-set-tab="desktop">⚙ 日历与桌面</button>
-          <button class="seg-btn" data-set-tab="update">⬆ 关于与检查更新</button>
+          <button class="seg-btn active" data-set-tab="theme">👕 外观与皮肤</button>
+          <button class="seg-btn" data-set-tab="cal">📅 日历与排课</button>
+          <button class="seg-btn" data-set-tab="desktop">💻 桌面与提醒</button>
+          <button class="seg-btn" data-set-tab="update">⬆ 更新与关于</button>
         </div>
 
-        <!-- 设置子页 1：坚果云 WebDAV 自动同步（账户设置） -->
-        <div id="set-panel-sync" style="display:flex;flex-direction:column;gap:11px;">
-          <div class="hint-box" id="sync-detail-banner">
-            四文件免费自动双向同步至 <code>/TeacherCal/</code>（个人课表、单次调课、顶层干活、班主任班级课表）。<br/>
-            在坚果云网页版 → 账户信息 → 安全选项 → 第三方应用管理 → 添加应用，复制<strong>应用密码（同步码）</strong>填在下方。
-          </div>
+        <!-- 设置子页 1：外观与皮肤（纯视觉控制：日夜模式 / 纯色皮肤 / 透明风格与唯一透明度滑块） -->
+        <div id="set-panel-theme" style="display:flex;flex-direction:column;gap:11px;">
           <div class="field">
-            <label>WebDAV 服务器地址</label>
-            <input type="text" class="input" id="dav-url" value="https://dav.jianguoyun.com/dav/" />
-          </div>
-          <div class="field-row">
-            <div class="field"><label>坚果云账号（邮箱）</label><input type="text" class="input" id="dav-user" value="2465179479@qq.com" /></div>
-            <div class="field"><label>同步目录名</label><input type="text" class="input" id="dav-folder" value="TeacherCal" /></div>
-          </div>
-          <div class="field">
-            <label>第三方应用密码（同步码，仅保存于本机）</label>
-            <input type="password" class="input" id="dav-pass" placeholder="粘贴坚果云生成的第三方应用密码" />
-          </div>
-          <label class="layer-ctrl"><input type="checkbox" id="dav-auto" checked /> 开启自动双向同步（修改2秒后静默上传 + 定时拉取）</label>
-          <div id="dav-test-result" class="hint-box hidden"></div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;">
-            <button class="btn" id="btn-dav-test">测试连接</button>
-            <button class="btn" id="btn-dav-sync-now">立即同步</button>
-            <button class="btn btn-primary" id="btn-dav-save">保存同步配置</button>
-          </div>
-        </div>
-
-        <!-- 设置子页 2：主题皮肤（三档外观 + 透明/半透背景预设） -->
-        <div id="set-panel-theme" style="display:none;flex-direction:column;gap:12px;">
-          <div class="hint-box">选择 Apple 外观模式与背景透明效果：支持「🧊 全透明（直透电脑壁纸）」「💧 半透明」「🫧 磨砂玻璃」与「🎴 实色」一键切换或滑块精细微调。</div>
-          <div class="field">
-            <label>外观模式（三档）</label>
+            <label>三档外观模式</label>
             <div class="seg-group" id="theme-seg" style="align-self:flex-start;">
               <button class="seg-btn" data-theme-mode="light">☀️ 白天</button>
               <button class="seg-btn" data-theme-mode="dark">🌙 黑夜</button>
@@ -397,52 +425,58 @@
           </div>
         </div>
 
-        <!-- 设置子页 3：日历与桌面设置 -->
-        <div id="set-panel-desktop" style="display:none;flex-direction:column;gap:11px;">
-          <div style="display:flex;flex-direction:column;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border-soft);background:var(--glass-pill);">
-            <label class="layer-ctrl" title="拖动课程时自动略过课间/午休，像磁铁一样吸附到有效节次（按住 Alt 可临时自由拖动）">
-              <input type="checkbox" id="chk-magnet" checked />
-              <span>🧲 节次磁吸（拖动调课自动略过课间）</span>
-            </label>
+        <!-- 设置子页 2：日历与排课（仅时间轴显示范围、磁吸与拖拽对调规则、作息与课表管理入口） -->
+        <div id="set-panel-cal" style="display:none;flex-direction:column;gap:11px;">
+          <div class="field">
+            <label>时间轴显示范围</label>
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
               <button class="toggle-chip" id="btn-toggle-evening" title="开启或隐藏晚自习时间段">🌃 展示晚自习</button>
               <button class="toggle-chip" id="btn-toggle-weekend" title="开启或隐藏周六周日">📅 展示周末</button>
             </div>
-            <div class="field">
-              <label>玻璃透明程度（0% 全透明 ~ 98% 实色）</label>
-              <input type="range" id="rng-bg-alpha" min="0" max="98" value="72" style="width:100%;" />
-            </div>
-            <div style="height:1px;background:var(--border-soft);margin:2px 0;"></div>
-            <label class="layer-ctrl"><input type="checkbox" id="opt-autolaunch" /><span>🚀 Windows 开机自动启动（开机后自动后台贴桌面运行）</span></label>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-              <label class="layer-ctrl"><input type="checkbox" id="opt-reminder" checked /><span>🔔 上课前 5 分钟 & 待办到点卡片提醒</span></label>
-              <button class="btn" id="btn-test-reminder" style="padding:2px 9px;font-size:11px;">试听提醒</button>
-            </div>
-            <div style="font-size:11.5px;color:var(--text-sub);line-height:1.5;">
-              💡 点击右上角 <strong>✕</strong> 关闭界面仅会隐藏到右下角系统托盘保持后台运行；<strong>只有在右下角托盘图标右键点击「彻底退出桌面日历」才会完全退出</strong>。
-            </div>
           </div>
-          <div class="hint-box">
-            Windows 端可自由拖动四边调整长宽高（最小限制 680×520 防内容拥挤），点击右上角 <strong>🔒</strong> 即可固定位置与尺寸并锁定课表防误触。
+          <div class="field">
+            <label>拖拽排课规则</label>
+            <label class="layer-ctrl" title="拖动课程时自动略过课间/午休，像磁铁一样吸附到有效节次（按住 Alt 可临时自由拖动）">
+              <input type="checkbox" id="chk-magnet" checked />
+              <span>🧲 节次磁吸与拖拽对调（自动略过课间，拖到另一卡片上松手即可互换）</span>
+            </label>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn" id="btn-open-bell-from-set">⚡ 批量排作息时间</button>
-            <button class="btn" id="btn-open-tt-from-set">📋 课表与单双周管理</button>
-          </div>
-          <div class="desktop-only" style="flex-direction:column;gap:10px;width:100%;">
-            <label class="layer-ctrl"><input type="checkbox" id="opt-desktop-pin" checked /> 贴桌面模式（不在任务栏占位，右下角托盘常驻）</label>
-            <div id="lan-url-box" class="hint-box"></div>
-            <div style="display:flex;justify-content:flex-end;">
-              <button class="btn btn-primary" id="btn-desktop-opt-save">保存桌面选项</button>
+          <div class="field">
+            <label>作息与课表基准</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn" id="btn-open-bell-from-set">⚡ 打开智能批量排作息时间</button>
+              <button class="btn" id="btn-open-tt-from-set">📋 课程表与单双周管理</button>
             </div>
           </div>
         </div>
 
-        <!-- 设置子页 4：关于与在线检查更新 -->
+        <!-- 设置子页 3：桌面与提醒（课程/待办提醒 + 开机自启 + 贴桌面/托盘与局域网） -->
+        <div id="set-panel-desktop" style="display:none;flex-direction:column;gap:11px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <label class="layer-ctrl"><input type="checkbox" id="opt-reminder" checked /><span>🔔 上课前 5 分钟 & 待办到点卡片提醒</span></label>
+            <button class="btn" id="btn-test-reminder" style="padding:2px 9px;font-size:11px;">试听提醒</button>
+          </div>
+          <label class="layer-ctrl"><input type="checkbox" id="opt-autolaunch" /><span>🚀 Windows 开机自动启动（开机后自动后台贴桌面运行）</span></label>
+          <div class="desktop-only" style="flex-direction:column;gap:10px;width:100%;">
+            <label class="layer-ctrl"><input type="checkbox" id="opt-desktop-pin" checked /> 贴桌面模式（不在任务栏占位，右下角托盘常驻）</label>
+            <div id="lan-url-box" class="hint-box" style="margin:0;"></div>
+            <div style="display:flex;justify-content:flex-end;">
+              <button class="btn btn-primary" id="btn-desktop-opt-save">保存桌面选项</button>
+            </div>
+          </div>
+          <div class="hint-box" style="margin:0;font-size:11.5px;">
+            💡 点击右上角 <strong>✕</strong> 关闭界面仅隐藏到右下角系统托盘继续后台提醒；<strong>仅在右键托盘图标 →「彻底退出桌面日历」时才完全退出</strong>。可拖动四边调尺寸（最小 680×520），按 <strong>Ctrl+Alt+L</strong> 或右上角 <strong>🔒</strong> 固定防误触。
+          </div>
+        </div>
+
+        <!-- 设置子页 4：更新与关于 -->
         <div id="set-panel-update" style="display:none;flex-direction:column;gap:11px;">
-          <div class="hint-box">
-            当前版本：<strong id="upd-cur-ver">v1.5.3</strong><br/>
-            在线更新仅覆盖程序代码目录，个人课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
+          <div class="hint-box" style="margin:0;">
+            当前版本：<strong id="upd-cur-ver">v1.5.4</strong><br/>
+            在线更新仅覆盖程序代码目录，个人课表、多班级课表、调课记录与坚果云配置安全保存在系统目录，绝不丢失。
+          </div>
+          <div class="hint-box" style="margin:0;font-size:11.5px;">
+            <strong>💡 核心功能亮点</strong>：双图层时间轴叠加 · 个人/最多3班级课表双向同步 · 拖拽磁吸对调 · AI 一句话/Excel 作息识别 · 中国农历节假日日历。
           </div>
           <div class="field">
             <label>GitHub 更新仓库（如 <code>ocean999/teacher-layer-calendar</code>）或自定义 <code>version.json</code> 地址</label>
@@ -618,7 +652,7 @@
     </div>
   </div>
 
-  <!-- ⚙ 工具与系统设置统一菜单（整合原扩展插件、手机连接与 ≡ 主菜单，按 4 组逻辑重构去重） -->
+  <!-- ⚙ 工具与快捷功能菜单（每项均配 16×16 线性图标；所有设置统一收口至「⚙ 系统偏好设置」） -->
   <div class="dropdown-menu hidden" id="menu-plugin">
     <div class="dropdown-section-label">课表与待办</div>
     <button class="dropdown-item lock-disabled" data-plugin-act="schedule-mgr">
@@ -626,7 +660,7 @@
       <span class="dropdown-item-text">课程表管理</span>
     </button>
     <button class="dropdown-item lock-disabled" data-plugin-act="import">
-      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
       <span class="dropdown-item-text">导入课表 / 文件</span>
     </button>
     <button class="dropdown-item lock-disabled" data-plugin-act="new-memo">
@@ -634,7 +668,7 @@
       <span class="dropdown-item-text">新建待办便签</span>
     </button>
     <button class="dropdown-item" data-plugin-act="memo-mgr">
-      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
       <span class="dropdown-item-text">便签与待办管理</span>
     </button>
     <button class="dropdown-item" data-plugin-act="weekly-report">
@@ -642,55 +676,33 @@
       <span class="dropdown-item-text">自动生成周报</span>
     </button>
     <div class="dropdown-divider"></div>
-    <div class="dropdown-section-label">查找与视图</div>
+    <div class="dropdown-section-label">查找与数据</div>
     <button class="dropdown-item" data-plugin-act="search">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span>
       <span class="dropdown-item-text">内容搜索 / 跳转日期</span>
     </button>
-    <button class="dropdown-item" data-plugin-act="theme">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z"/></svg></span>
-      <span class="dropdown-item-text">主题皮肤与透明度</span>
-    </button>
     <button class="dropdown-item" data-plugin-act="privacy-mask">
-      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
       <span class="dropdown-item-text">隐私保护 · 隐藏内容</span>
       <span class="dropdown-item-trailing" id="menu-privacy-flag">🔓</span>
     </button>
-    <button class="dropdown-item" data-plugin-act="resize-unlock">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></span>
-      <span class="dropdown-item-text">解锁窗口位置与大小</span>
-    </button>
-    <div class="dropdown-divider"></div>
-    <div class="dropdown-section-label">多端与数据</div>
-    <button class="dropdown-item" data-plugin-act="phone-lan">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><line x1="10.5" y1="18" x2="13.5" y2="18"/></svg></span>
-      <span class="dropdown-item-text">手机连接与局域网同步</span>
-    </button>
     <button class="dropdown-item" data-plugin-act="export">
-      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
       <span class="dropdown-item-text">导出 JSON 备份</span>
     </button>
     <button class="dropdown-item" data-plugin-act="print">
-      <span class="dropdown-item-icon"></span>
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></span>
       <span class="dropdown-item-text">打印课表</span>
     </button>
     <div class="dropdown-divider"></div>
-    <div class="dropdown-section-label">系统与关于</div>
-    <button class="dropdown-item" data-plugin-act="cal-settings">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="15" cy="14" r="2.5" style="stroke:var(--apple-blue)"/></svg></span>
-      <span class="dropdown-item-text">日历与桌面设置</span>
-    </button>
-    <button class="dropdown-item" data-plugin-act="features">
-      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.5 1 1.3 1 2.3h6c0-1 .3-1.8 1-2.3A7 7 0 0 0 12 2Z"/></svg></span>
-      <span class="dropdown-item-text">功能介绍</span>
-    </button>
-    <button class="dropdown-item" data-plugin-act="about-update">
-      <span class="dropdown-item-icon"></span>
-      <span class="dropdown-item-text">关于与在线检查更新</span>
+    <div class="dropdown-section-label">系统</div>
+    <button class="dropdown-item" data-plugin-act="sys-settings">
+      <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></span>
+      <span class="dropdown-item-text">系统偏好设置…</span>
     </button>
     <button class="dropdown-item" data-plugin-act="hide-window">
       <span class="dropdown-item-icon"><svg viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></span>
-      <span class="dropdown-item-text">隐藏到托盘</span>
+      <span class="dropdown-item-text">隐藏界面到托盘</span>
     </button>
   </div>
 
@@ -792,23 +804,26 @@
     </div>
   </div>
 
-  <!-- 弹窗 12：功能介绍 -->
-  <div class="modal-backdrop hidden" id="modal-features">
-    <div class="modal">
+  <!-- 弹窗 12：班级课表修改/对调生效范围确认弹窗（仅本周 vs 后续一直到本学期并自动同步个人课表） -->
+  <div class="modal-backdrop clear-backdrop hidden" id="modal-class-scope">
+    <div class="modal" style="max-width:460px;">
       <div class="modal-header">
-        <span>💡 功能介绍</span>
-        <button class="btn btn-icon" data-close="modal-features">✕</button>
+        <span>🔄 班级课表调整生效范围</span>
+        <button class="btn btn-icon" data-close="modal-class-scope">✕</button>
       </div>
-      <div class="modal-body">
-        <div class="hint-box">
-          <strong>1. 双图层精确时间轴叠加</strong>：底层铺固定课表（支持 🧲 跳过课间磁吸单次调课），顶层叠临时干活与便签，时间撞车自动透视标 ⚡。<br/>
-          <strong>2. 班主任专属视图</strong>：一键切换纯净全班课表，并内置 Excel / Word / 拍照 OCR 三合一识别导入与左侧时间轴自动校准。<br/>
-          <strong>3. 坚果云免费自动同步 + 在线检查更新</strong>：Windows 桌面版与安卓 App 实时四文件无损双向同步，零会员收费。
+      <div class="modal-body" style="gap:10px;">
+        <div class="hint-box" id="cscope-desc" style="margin:0;"></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-sub);padding:2px 2px;">
+          <div>• <strong>仅本周单次生效</strong>：下周自动恢复原固定课表（个人课表同步本周单次调课）。</div>
+          <div>• <strong>后续至本学期一直生效</strong>：永久调整固定「班级课表」，并<strong>自动同步修改「我的授课课表」</strong>对应节次。</div>
         </div>
       </div>
-      <div class="modal-footer">
-        <span></span>
-        <button class="btn btn-primary" data-close="modal-features">知道了</button>
+      <div class="modal-footer" style="flex-wrap:wrap;gap:6px;">
+        <button class="btn" data-close="modal-class-scope">取消</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn" id="btn-cscope-week">📅 仅本周单次生效</button>
+          <button class="btn btn-primary" id="btn-cscope-term">📆 后续至本学期一直生效</button>
+        </div>
       </div>
     </div>
   </div>
