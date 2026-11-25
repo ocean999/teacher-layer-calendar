@@ -3549,6 +3549,7 @@
         autoCheck: document.getElementById('upd-auto-check').checked,
       };
       await window.SyncBridge.saveState(appState);
+      document.getElementById('btn-upd-apply')?.classList.add('hidden');
       const box = document.getElementById('upd-status-box');
       box.className = 'hint-box'; box.textContent = '正在在线检查最新版本…'; box.classList.remove('hidden');
       await runUpdateCheck(false);

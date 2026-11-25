@@ -88,6 +88,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.hidden:not(.reminder-popup) {
+  display: none !important;
+}
+
 html, body {
   margin: 0;
   padding: 0;
