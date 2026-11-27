@@ -176,6 +176,10 @@
           desktopPin: true,
           autoLaunch: false,
           lanEnabled: true,
+          edgeSnap: true,
+          fullscreenDnd: true,
+          showCountdown: true,
+          dedupConsecutive: true,
           frostedBlur: true,
           fontFamily: 'system',
           fontSize: 13,
@@ -213,6 +217,7 @@
         activeClassId: 'cls_1',
         classTimetables: [{ id: 'cls_1', className: '902班', metaUpdatedAt: now, courses: [], overrides: [] }],
         inbox: [],
+        countdowns: [],
         dayOverrides: {},
       },
       lastSyncedAt: null,
@@ -284,6 +289,7 @@
       const mergedTimetable = mergeTimetable(state.data.timetable || {}, remoteTt);
       const mergedOverrides = mergeItemList(state.data.overrides || [], (remoteOv && remoteOv.items) || []);
       const mergedWorks = mergeItemList(state.data.works || [], (remoteWk && remoteWk.items) || []);
+      const mergedCountdowns = mergeItemList(state.data.countdowns || [], (remoteWk && remoteWk.countdowns) || []);
       const mergedClassTt = mergeClassTimetable({
         ...(state.data.classTimetable || {}),
         classTimetables: state.data.classTimetables,
@@ -293,7 +299,7 @@
 
       putJson('timetable.json', mergedTimetable);
       putJson('overrides.json', { updatedAt: now, items: mergedOverrides });
-      putJson('works.json', { updatedAt: now, items: mergedWorks });
+      putJson('works.json', { updatedAt: now, items: mergedWorks, countdowns: mergedCountdowns });
       putJson('class_timetable.json', mergedClassTt);
 
       const nextState = {
@@ -302,6 +308,7 @@
           timetable: mergedTimetable,
           overrides: mergedOverrides,
           works: mergedWorks,
+          countdowns: mergedCountdowns,
           classTimetable: mergedClassTt,
           classTimetables: mergedClassTt.classTimetables,
           activeClassId: mergedClassTt.activeClassId,
@@ -378,17 +385,24 @@
 
     async getAppVersion() {
       if (mode === 'desktop') return window.desktopApi.getAppVersion();
-      return '1.5.7';
+      return '1.6.0';
     },
 
     async checkUpdate(cfg) {
       if (mode === 'desktop') return window.desktopApi.checkUpdate(cfg);
-      return { ok: true, hasUpdate: false, currentVersion: '1.5.7', latestVersion: '1.5.7', message: '在线一键热更新支持在 Windows 桌面端运行；安卓端可在 GitHub Actions 自动生成最新 APK。' };
+      return { ok: true, hasUpdate: false, currentVersion: '1.6.0', latestVersion: '1.6.0', message: '在线一键热更新支持在 Windows 桌面端运行；安卓端可在 GitHub Actions 自动生成最新 APK。' };
     },
 
     async applyUpdate(downloadUrl) {
       if (mode === 'desktop') return window.desktopApi.applyUpdate(downloadUrl);
       return { ok: false, message: '仅 Windows 桌面端支持一键热更新。' };
+    },
+
+    async isFullscreenBusy() {
+      if (mode === 'desktop' && window.desktopApi && typeof window.desktopApi.isFullscreenBusy === 'function') {
+        try { return !!(await window.desktopApi.isFullscreenBusy()); } catch { return false; }
+      }
+      return !!document.fullscreenElement;
     },
 
     async getLanInfo() {

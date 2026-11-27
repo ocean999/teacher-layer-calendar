@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShortcut, screen, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
@@ -18,9 +18,12 @@ let lanServer = null;
 let isLocked = false;
 let winZProc = null;
 let winZReady = false;
-let pendingWinZLine = null;
+let pendingWinZLines = [];
+let winZOtherFullscreen = false;
 let reassertBottomTimer = null;
 let reassertFollowTimer = null;
+let rendererCrashTimes = [];
+let gpuCrashCount = 0;
 
 function writeCrashLog(tag, err) {
   try {
@@ -118,6 +121,10 @@ function createDefaultState() {
         autoLaunch: false,
         reminderEnabled: true,
         lanEnabled: true,
+        edgeSnap: true,
+        fullscreenDnd: true,
+        showCountdown: true,
+        dedupConsecutive: true,
         frostedBlur: true,
         fontFamily: 'system',
         fontSize: 13,
@@ -196,6 +203,7 @@ function createDefaultState() {
         },
       ],
       inbox: [],
+      countdowns: [],
       dayOverrides: {},
     },
     lastSyncedAt: null,
@@ -238,66 +246,174 @@ function normalizeLoadedClassData(parsedData, defData) {
   };
 }
 
+function parseAndNormalizeState(rawText) {
+  const parsed = JSON.parse(rawText);
+  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid state root');
+  const def = createDefaultState();
+  const clsData = normalizeLoadedClassData(parsed.data, def.data);
+  const rawUi = parsed.config?.ui || {};
+  const mergedHotkeys = {
+    hide: { ...def.config.ui.hotkeys.hide, ...(rawUi.hotkeys?.hide || {}) },
+    priv: { ...def.config.ui.hotkeys.priv, ...(rawUi.hotkeys?.priv || {}) },
+    lock: { ...def.config.ui.hotkeys.lock, ...(rawUi.hotkeys?.lock || {}) },
+    memo: { ...def.config.ui.hotkeys.memo, ...(rawUi.hotkeys?.memo || {}) },
+  };
+  return {
+    config: {
+      webdav: { ...def.config.webdav, ...(parsed.config?.webdav || {}) },
+      updater: { ...def.config.updater, ...(parsed.config?.updater || {}) },
+      ui: {
+        ...def.config.ui,
+        ...rawUi,
+        restWeekdays: Array.isArray(rawUi.restWeekdays) ? rawUi.restWeekdays : def.config.ui.restWeekdays,
+        hotkeys: mergedHotkeys,
+      },
+      bounds: parsed.config?.bounds || null,
+    },
+    data: {
+      timetable: {
+        ...def.data.timetable,
+        ...(parsed.data?.timetable || {}),
+        periods: (parsed.data?.timetable?.periods && parsed.data.timetable.periods.length)
+          ? parsed.data.timetable.periods
+          : def.data.timetable.periods,
+      },
+      overrides: Array.isArray(parsed.data?.overrides) ? parsed.data.overrides : [],
+      works: Array.isArray(parsed.data?.works) ? parsed.data.works : [],
+      classTimetable: clsData.classTimetable,
+      activeClassId: clsData.activeClassId,
+      classTimetables: clsData.classTimetables,
+      inbox: Array.isArray(parsed.data?.inbox) ? parsed.data.inbox : [],
+      countdowns: Array.isArray(parsed.data?.countdowns) ? parsed.data.countdowns : [],
+      dayOverrides: (parsed.data?.dayOverrides && typeof parsed.data.dayOverrides === 'object')
+        ? parsed.data.dayOverrides
+        : {},
+    },
+    lastSyncedAt: parsed.lastSyncedAt || null,
+  };
+}
+
+function compactStateTombstones(st) {
+  if (!st || !st.data) return st;
+  const prune = webdav.pruneTombstones;
+  if (typeof prune !== 'function') return st;
+  if (st.data.timetable && Array.isArray(st.data.timetable.courses)) {
+    st.data.timetable.courses = prune(st.data.timetable.courses);
+  }
+  if (Array.isArray(st.data.overrides)) st.data.overrides = prune(st.data.overrides);
+  if (Array.isArray(st.data.works)) st.data.works = prune(st.data.works);
+  if (Array.isArray(st.data.countdowns)) st.data.countdowns = prune(st.data.countdowns);
+  if (Array.isArray(st.data.classTimetables)) {
+    st.data.classTimetables = st.data.classTimetables.map((ct) => ({
+      ...ct,
+      courses: prune(ct.courses || []),
+      overrides: prune(ct.overrides || []),
+    }));
+    const primary = st.data.classTimetables.find(c => c.id === st.data.activeClassId) || st.data.classTimetables[0];
+    if (primary) {
+      st.data.classTimetable = {
+        id: primary.id,
+        className: primary.className,
+        metaUpdatedAt: primary.metaUpdatedAt || 0,
+        courses: primary.courses,
+        overrides: primary.overrides,
+      };
+    }
+  }
+  return st;
+}
+
 function loadState() {
   const file = getDataFilePath();
+  const bakFile = `${file}.bak`;
   if (!fs.existsSync(file)) {
+    if (fs.existsSync(bakFile)) {
+      try {
+        const recovered = parseAndNormalizeState(fs.readFileSync(bakFile, 'utf8'));
+        saveState(recovered);
+        return recovered;
+      } catch (bakErr) {
+        writeCrashLog('loadState-bak-recovery-failed', bakErr);
+      }
+    }
     const def = createDefaultState();
     saveState(def);
     return def;
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return parseAndNormalizeState(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    writeCrashLog('loadState-corrupt', err);
+    try {
+      fs.renameSync(file, `${file}.corrupt-${Date.now()}`);
+    } catch {}
+    if (fs.existsSync(bakFile)) {
+      try {
+        const recovered = parseAndNormalizeState(fs.readFileSync(bakFile, 'utf8'));
+        saveState(recovered);
+        return recovered;
+      } catch (bakErr) {
+        writeCrashLog('loadState-bak-recovery-failed', bakErr);
+      }
+    }
     const def = createDefaultState();
-    const clsData = normalizeLoadedClassData(parsed.data, def.data);
-    const rawUi = parsed.config?.ui || {};
-    const mergedHotkeys = {
-      hide: { ...def.config.ui.hotkeys.hide, ...(rawUi.hotkeys?.hide || {}) },
-      priv: { ...def.config.ui.hotkeys.priv, ...(rawUi.hotkeys?.priv || {}) },
-      lock: { ...def.config.ui.hotkeys.lock, ...(rawUi.hotkeys?.lock || {}) },
-      memo: { ...def.config.ui.hotkeys.memo, ...(rawUi.hotkeys?.memo || {}) },
-    };
-    return {
-      config: {
-        webdav: { ...def.config.webdav, ...(parsed.config?.webdav || {}) },
-        updater: { ...def.config.updater, ...(parsed.config?.updater || {}) },
-        ui: {
-          ...def.config.ui,
-          ...rawUi,
-          restWeekdays: Array.isArray(rawUi.restWeekdays) ? rawUi.restWeekdays : def.config.ui.restWeekdays,
-          hotkeys: mergedHotkeys,
-        },
-        bounds: parsed.config?.bounds || null,
-      },
-      data: {
-        timetable: {
-          ...def.data.timetable,
-          ...(parsed.data?.timetable || {}),
-          periods: (parsed.data?.timetable?.periods && parsed.data.timetable.periods.length)
-            ? parsed.data.timetable.periods
-            : def.data.timetable.periods,
-        },
-        overrides: Array.isArray(parsed.data?.overrides) ? parsed.data.overrides : [],
-        works: Array.isArray(parsed.data?.works) ? parsed.data.works : [],
-        classTimetable: clsData.classTimetable,
-        activeClassId: clsData.activeClassId,
-        classTimetables: clsData.classTimetables,
-        inbox: Array.isArray(parsed.data?.inbox) ? parsed.data.inbox : [],
-        dayOverrides: (parsed.data?.dayOverrides && typeof parsed.data.dayOverrides === 'object')
-          ? parsed.data.dayOverrides
-          : {},
-      },
-      lastSyncedAt: parsed.lastSyncedAt || null,
-    };
-  } catch {
-    return createDefaultState();
+    saveState(def);
+    return def;
   }
 }
 
 function saveState(nextState) {
   const file = getDataFilePath();
+  const bakFile = `${file}.bak`;
+  const tmpFile = `${file}.tmp`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(nextState, null, 2), 'utf8');
+  compactStateTombstones(nextState);
+  const serialized = JSON.stringify(nextState, null, 2);
+  fs.writeFileSync(tmpFile, serialized, 'utf8');
+  try {
+    if (fs.existsSync(file)) {
+      const prevStat = fs.statSync(file);
+      if (prevStat.size > 2) fs.copyFileSync(file, bakFile);
+    }
+  } catch {}
+  try {
+    fs.renameSync(tmpFile, file);
+  } catch {
+    fs.copyFileSync(tmpFile, file);
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
   return nextState;
+}
+
+function mergeStatePayload(cur, payload = {}) {
+  const incomingWd = payload.config?.webdav;
+  const mergedWebdav = incomingWd
+    ? {
+        ...cur.config.webdav,
+        ...incomingWd,
+        password: incomingWd.password === '__SAVED__' ? (cur.config.webdav?.password || '') : incomingWd.password,
+      }
+    : cur.config.webdav;
+  const nextConfig = payload.config
+    ? {
+        ...cur.config,
+        ...payload.config,
+        webdav: mergedWebdav,
+        ui: payload.config.ui ? { ...cur.config.ui, ...payload.config.ui } : cur.config.ui,
+      }
+    : cur.config;
+  return {
+    ...cur,
+    config: nextConfig,
+    data: payload.data ? payload.data : cur.data,
+    lastSyncedAt: payload.lastSyncedAt !== undefined ? payload.lastSyncedAt : cur.lastSyncedAt,
+  };
+}
+
+function syncLanServerWithUi(ui) {
+  if (!lanServer) return;
+  if (ui && ui.lanEnabled === false) lanServer.stop();
+  else lanServer.start();
 }
 
 function buildTrayIcon() {
@@ -358,33 +474,201 @@ function ensureWinZHelper() {
   winZReady = false;
   const csCode = [
     'using System;',
+    'using System.Text;',
+    'using System.Threading;',
     'using System.Runtime.InteropServices;',
     'public static class WinZ {',
-    '  [DllImport("user32.dll")]',
-    '  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);',
-    '  [DllImport("user32.dll")]',
-    '  public static extern bool BringWindowToTop(IntPtr hWnd);',
-    '  [DllImport("user32.dll")]',
-    '  public static extern bool SetForegroundWindow(IntPtr hWnd);',
+    '  public delegate bool EnumProc(IntPtr h, IntPtr l);',
+    '  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }',
+    '  [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }',
+    '  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);',
+    '  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);',
+    '  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);',
+    '  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);',
+    '  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);',
+    '  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);',
+    '  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);',
+    '  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);',
+    '  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);',
+    '  [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);',
+    '  [DllImport("user32.dll")] public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);',
+    '  [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern IntPtr FindWindow(string cls, string win);',
+    '  [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string win);',
+    '  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc lpEnumFunc, IntPtr lParam);',
+    '  [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);',
+    '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);',
+    '  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+    '  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);',
+    '  [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);',
+    '  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int pvAttr, int cbAttr);',
+    '  public static volatile IntPtr LockedHwnd = IntPtr.Zero;',
+    '  public static volatile IntPtr SelfHwnd = IntPtr.Zero;',
+    '  private static bool tempTopmost = false;',
+    '  private static int lastFs = -1;',
+    '  public static void SetExTool(IntPtr h, bool tool) {',
+    '    int ex = GetWindowLong(h, -20);',
+    '    if (tool) ex = (ex | 0x00000080) & ~0x00040000;',
+    '    else ex = (ex & ~0x00000080) | 0x00040000;',
+    '    SetWindowLong(h, -20, ex);',
+    '    SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0, 0x0037);',
+    '  }',
+    '  public static IntPtr FindDesktopHost() {',
+    '    IntPtr prog = FindWindow("Progman", null);',
+    '    if (prog != IntPtr.Zero && FindWindowEx(prog, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero) return prog;',
+    '    IntPtr found = IntPtr.Zero;',
+    '    EnumWindows(delegate(IntPtr h, IntPtr l) {',
+    '      if (FindWindowEx(h, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero) { found = h; return false; }',
+    '      return true;',
+    '    }, IntPtr.Zero);',
+    '    return found != IntPtr.Zero ? found : prog;',
+    '  }',
+    '  private static string Cls(IntPtr h) {',
+    '    StringBuilder sb = new StringBuilder(64);',
+    '    GetClassName(h, sb, 64);',
+    '    return sb.ToString();',
+    '  }',
+    '  private static bool IsCloaked(IntPtr h) {',
+    '    int c = 0;',
+    '    try { if (DwmGetWindowAttribute(h, 14, out c, 4) == 0 && c != 0) return true; } catch {}',
+    '    return false;',
+    '  }',
+    '  public static bool IsWindowBelow(IntPtr a, IntPtr b) {',
+    '    IntPtr cur = GetWindow(a, 3);',
+    '    int guard = 0;',
+    '    while (cur != IntPtr.Zero && guard++ < 512) {',
+    '      if (cur == b) return true;',
+    '      cur = GetWindow(cur, 3);',
+    '    }',
+    '    return false;',
+    '  }',
+    '  public static bool HasNormalWindowBelow(IntPtr h, IntPtr desktopHost) {',
+    '    IntPtr cur = GetWindow(h, 2);',
+    '    int guard = 0;',
+    '    while (cur != IntPtr.Zero && guard++ < 400) {',
+    '      if (cur == desktopHost) break;',
+    '      if (IsWindowVisible(cur) && !IsIconic(cur) && !IsCloaked(cur)) {',
+    '        int ex = GetWindowLong(cur, -20);',
+    '        if ((ex & 0x00000080) == 0 && (ex & 0x00000008) == 0) {',
+    '          string cn = Cls(cur);',
+    '          if (cn != "Progman" && cn != "WorkerW" && cn != "Shell_TrayWnd" && cn != "Shell_SecondaryTrayWnd") {',
+    '            RECT r; if (GetWindowRect(cur, out r) && (r.Right - r.Left) > 80 && (r.Bottom - r.Top) > 80) return true;',
+    '          }',
+    '        }',
+    '      }',
+    '      cur = GetWindow(cur, 2);',
+    '    }',
+    '    return false;',
+    '  }',
+    '  public static void SinkBottom(IntPtr h, IntPtr desktopHost) {',
+    '    if (desktopHost != IntPtr.Zero) {',
+    '      IntPtr prev = GetWindow(desktopHost, 3);',
+    '      if (prev != IntPtr.Zero && prev != h) {',
+    '        SetWindowPos(h, prev, 0, 0, 0, 0, 0x0413);',
+    '        return;',
+    '      }',
+    '    }',
+    '    SetWindowPos(h, (IntPtr)1, 0, 0, 0, 0, 0x0413);',
+    '  }',
+    '  public static void ApplyLock(IntPtr h) {',
+    '    SelfHwnd = h;',
+    '    LockedHwnd = h;',
+    '    if (h == IntPtr.Zero || !IsWindow(h)) return;',
+    '    SetExTool(h, true);',
+    '    IntPtr host = FindDesktopHost();',
+    '    if (host != IntPtr.Zero) try { SetWindowLongPtr(h, -8, host); } catch {}',
+    '    SinkBottom(h, host);',
+    '  }',
+    '  public static void ApplyUnlock(IntPtr h, bool clearTool) {',
+    '    LockedHwnd = IntPtr.Zero;',
+    '    if (tempTopmost && h != IntPtr.Zero && IsWindow(h)) {',
+    '      SetWindowPos(h, (IntPtr)(-2), 0, 0, 0, 0, 0x0413);',
+    '      tempTopmost = false;',
+    '    }',
+    '    if (h == IntPtr.Zero || !IsWindow(h)) return;',
+    '    try { SetWindowLongPtr(h, -8, IntPtr.Zero); } catch {}',
+    '    if (clearTool) SetExTool(h, false);',
+    '    SetWindowPos(h, (IntPtr)(-2), 0, 0, 0, 0, 0x0003);',
+    '    SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0, 0x0043);',
+    '    BringWindowToTop(h);',
+    '    SetForegroundWindow(h);',
+    '  }',
+    '  public static int CheckOtherFullscreen() {',
+    '    IntPtr fg = GetForegroundWindow();',
+    '    if (fg == IntPtr.Zero || fg == SelfHwnd || !IsWindowVisible(fg) || IsIconic(fg) || IsCloaked(fg)) return 0;',
+    '    string cn = Cls(fg);',
+    '    if (cn == "Progman" || cn == "WorkerW" || cn == "Shell_TrayWnd" || cn == "Shell_SecondaryTrayWnd" || cn == "Windows.UI.Core.CoreWindow") return 0;',
+    '    RECT wr; if (!GetWindowRect(fg, out wr)) return 0;',
+    '    IntPtr mon = MonitorFromWindow(fg, 2);',
+    '    if (mon == IntPtr.Zero) return 0;',
+    '    MONITORINFO mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));',
+    '    if (!GetMonitorInfo(mon, ref mi)) return 0;',
+    '    int mw = mi.rcMonitor.Right - mi.rcMonitor.Left;',
+    '    int mh = mi.rcMonitor.Bottom - mi.rcMonitor.Top;',
+    '    if (mw <= 0 || mh <= 0) return 0;',
+    '    int ww = wr.Right - wr.Left, wh = wr.Bottom - wr.Top;',
+    '    return (ww >= mw * 0.98 && wh >= mh * 0.98) ? 1 : 0;',
+    '  }',
+    '  public static void StartWatcher() {',
+    '    Thread t = new Thread(delegate() {',
+    '      int tick = 0;',
+    '      while (true) {',
+    '        try {',
+    '          IntPtr h = LockedHwnd;',
+    '          if (h != IntPtr.Zero && IsWindow(h)) {',
+    '            if (IsIconic(h)) ShowWindow(h, 4);',
+    '            IntPtr host = FindDesktopHost();',
+    '            bool desktopTopmost = host != IntPtr.Zero && ((GetWindowLong(host, -20) & 0x0008) != 0);',
+    '            if (desktopTopmost) {',
+    '              SetWindowPos(h, (IntPtr)(-1), 0, 0, 0, 0, 0x0413);',
+    '              tempTopmost = true;',
+    '            } else {',
+    '              if (tempTopmost) {',
+    '                SetWindowPos(h, (IntPtr)(-2), 0, 0, 0, 0, 0x0413);',
+    '                tempTopmost = false;',
+    '                SinkBottom(h, host);',
+    '              } else if (host != IntPtr.Zero && IsWindowBelow(h, host)) {',
+    '                IntPtr prev = GetWindow(host, 3);',
+    '                SetWindowPos(h, prev != IntPtr.Zero ? prev : IntPtr.Zero, 0, 0, 0, 0, 0x0413);',
+    '              } else if (HasNormalWindowBelow(h, host)) {',
+    '                SinkBottom(h, host);',
+    '              }',
+    '            }',
+    '          }',
+    '          if ((tick++ % 10) == 0) {',
+    '            int fs = CheckOtherFullscreen();',
+    '            if (fs != lastFs) {',
+    '              lastFs = fs;',
+    '              Console.Out.WriteLine("FS:" + fs);',
+    '              Console.Out.Flush();',
+    '            }',
+    '          }',
+    '        } catch {}',
+    '        Thread.Sleep(110);',
+    '      }',
+    '    });',
+    '    t.IsBackground = true;',
+    '    t.Start();',
+    '  }',
     '}',
   ].join('\n');
   const csB64 = Buffer.from(csCode, 'utf8').toString('base64');
   const psScript = [
     `$cs = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${csB64}'))`,
     'Add-Type -TypeDefinition $cs -Language CSharp',
+    '[WinZ]::StartWatcher()',
     '[Console]::Out.WriteLine("READY")',
     '[Console]::Out.Flush()',
     'while (($line = [Console]::In.ReadLine()) -ne $null) {',
     '  $parts = $line.Trim().Split(" ")',
     '  if ($parts.Length -lt 2) { continue }',
     '  $cmd = $parts[0]; $h = [IntPtr]([Int64]$parts[1])',
-    '  if ($cmd -eq "BOTTOM") {',
-    '    [void][WinZ]::SetWindowPos($h, [IntPtr]1, 0, 0, 0, 0, 0x0013)',
-    '  } elseif ($cmd -eq "NORMAL") {',
-    '    [void][WinZ]::SetWindowPos($h, [IntPtr](-2), 0, 0, 0, 0, 0x0003)',
-    '    [void][WinZ]::SetWindowPos($h, [IntPtr]0, 0, 0, 0, 0, 0x0043)',
-    '    [void][WinZ]::BringWindowToTop($h)',
-    '    [void][WinZ]::SetForegroundWindow($h)',
+    '  if ($cmd -eq "SELF") {',
+    '    [WinZ]::SelfHwnd = $h',
+    '  } elseif ($cmd -eq "LOCK" -or $cmd -eq "BOTTOM") {',
+    '    [WinZ]::ApplyLock($h)',
+    '  } elseif ($cmd -eq "UNLOCK" -or $cmd -eq "NORMAL") {',
+    '    $clearTool = ($parts.Length -ge 3 -and $parts[2] -eq "1")',
+    '    [WinZ]::ApplyUnlock($h, $clearTool)',
     '  }',
     '}',
   ].join('\n');
@@ -393,17 +677,28 @@ function ensureWinZHelper() {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'ignore'],
   });
+  let stdoutBuf = '';
   winZProc.stdout.on('data', (chunk) => {
-    if (!winZReady && chunk.toString().includes('READY')) {
-      winZReady = true;
-      if (pendingWinZLine && winZProc && winZProc.stdin && !winZProc.stdin.destroyed) {
-        const line = pendingWinZLine;
-        pendingWinZLine = null;
-        try { winZProc.stdin.write(line); } catch {}
+    stdoutBuf += chunk.toString();
+    const lines = stdoutBuf.split(/\r?\n/);
+    stdoutBuf = lines.pop() || '';
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (line === 'READY' && !winZReady) {
+        winZReady = true;
+        while (pendingWinZLines.length && winZProc && winZProc.stdin && !winZProc.stdin.destroyed) {
+          const cmdLine = pendingWinZLines.shift();
+          try { winZProc.stdin.write(cmdLine); } catch {}
+        }
+      } else if (line === 'FS:1') {
+        winZOtherFullscreen = true;
+      } else if (line === 'FS:0') {
+        winZOtherFullscreen = false;
       }
     }
   });
-  const reset = () => { winZProc = null; winZReady = false; };
+  const reset = () => { winZProc = null; winZReady = false; winZOtherFullscreen = false; };
   winZProc.on('exit', reset);
   winZProc.on('error', reset);
   return winZProc;
@@ -426,7 +721,8 @@ function sendWinZCommand(cmd, hwndStr) {
   if (!p) return;
   const line = `${cmd} ${hwndStr}\n`;
   if (!winZReady || !p.stdin || p.stdin.destroyed) {
-    pendingWinZLine = line;
+    pendingWinZLines.push(line);
+    if (pendingWinZLines.length > 8) pendingWinZLines.shift();
     return;
   }
   try { p.stdin.write(line); } catch {}
@@ -437,11 +733,13 @@ function applyWindowBottomPin(locked) {
   const hwnd = getMainHwndDecimal();
   if (locked) {
     try { mainWindow.setAlwaysOnTop(false); } catch {}
-    sendWinZCommand('BOTTOM', hwnd);
+    sendWinZCommand('LOCK', hwnd);
   } else {
     clearTimeout(reassertBottomTimer);
     clearTimeout(reassertFollowTimer);
-    sendWinZCommand('NORMAL', hwnd);
+    const cur = loadState();
+    const clearTool = cur.config.ui.desktopPin === false ? '1' : '0';
+    sendWinZCommand('UNLOCK', `${hwnd} ${clearTool}`);
     try { mainWindow.focus(); } catch {}
   }
 }
@@ -467,9 +765,11 @@ function setDesktopLock(locked) {
   cur.config.ui.locked = isLocked;
   saveState(cur);
   if (mainWindow && !mainWindow.isDestroyed()) {
-    // 锁定后固定窗口位置与长宽高，并自动下沉固定在桌面最底层；解锁才恢复正常窗口层级
+    // 锁定后固定窗口位置与长宽高、禁用最小化，并自动下沉固定在桌面最底层且免疫 Win+D；解锁才恢复正常窗口层级
+    try { mainWindow.setMinimizable(!isLocked); } catch {}
     mainWindow.setMovable(!isLocked);
     mainWindow.setResizable(!isLocked);
+    mainWindow.setSkipTaskbar(isLocked ? true : !!cur.config.ui.desktopPin);
     applyWindowBottomPin(isLocked);
     mainWindow.webContents.send('win:lock-changed', isLocked);
   }
@@ -607,6 +907,7 @@ async function runSync(overrideData = null) {
       classTimetables: merged.classTimetables,
       activeClassId: merged.activeClassId,
       inbox: st.data.inbox || [],
+      countdowns: merged.countdowns || st.data.countdowns || [],
       dayOverrides: st.data.dayOverrides || {},
     };
     st.lastSyncedAt = merged.syncedAt;
@@ -617,16 +918,64 @@ async function runSync(overrideData = null) {
   }
 }
 
+function ensureVisibleBounds(b) {
+  const primary = screen.getPrimaryDisplay().workArea;
+  const fallbackW = Math.min(1160, Math.round(primary.width * 0.74));
+  const fallbackH = Math.min(740, Math.round(primary.height * 0.84));
+  const defBounds = {
+    width: Math.max(680, fallbackW),
+    height: Math.max(520, fallbackH),
+    x: primary.x + Math.round((primary.width - Math.max(680, fallbackW)) / 2),
+    y: primary.y + Math.round((primary.height - Math.max(520, fallbackH)) / 2),
+  };
+  if (!b || typeof b.x !== 'number' || typeof b.y !== 'number' || typeof b.width !== 'number' || typeof b.height !== 'number') {
+    return defBounds;
+  }
+  const displays = screen.getAllDisplays();
+  const hasVisibleIntersection = displays.some((disp) => {
+    const wa = disp.workArea;
+    const ix = Math.min(b.x + b.width, wa.x + wa.width) - Math.max(b.x, wa.x);
+    const iy = Math.min(b.y + b.height, wa.y + wa.height) - Math.max(b.y, wa.y);
+    return ix >= 120 && iy >= 80;
+  });
+  if (hasVisibleIntersection) return b;
+  const w = Math.max(680, Math.min(b.width, primary.width));
+  const h = Math.max(520, Math.min(b.height, primary.height));
+  return {
+    width: w,
+    height: h,
+    x: primary.x + Math.round((primary.width - w) / 2),
+    y: primary.y + Math.round((primary.height - h) / 2),
+  };
+}
+
+function snapBoundsToEdge(b) {
+  const matched = screen.getDisplayMatching(b);
+  const wa = matched.workArea;
+  const threshold = 14;
+  const margin = 8;
+  let nx = b.x;
+  let ny = b.y;
+  if (Math.abs(b.x - wa.x) <= threshold) nx = wa.x + margin;
+  else if (Math.abs((b.x + b.width) - (wa.x + wa.width)) <= threshold) nx = wa.x + wa.width - b.width - margin;
+  if (Math.abs(b.y - wa.y) <= threshold) ny = wa.y + margin;
+  else if (Math.abs((b.y + b.height) - (wa.y + wa.height)) <= threshold) ny = wa.y + wa.height - b.height - margin;
+  return { x: nx, y: ny };
+}
+
+function rescueWindowToVisibleArea() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const curBounds = mainWindow.getBounds();
+  const safeBounds = ensureVisibleBounds(curBounds);
+  if (safeBounds.x !== curBounds.x || safeBounds.y !== curBounds.y || safeBounds.width !== curBounds.width || safeBounds.height !== curBounds.height) {
+    mainWindow.setBounds(safeBounds);
+  }
+  if (isLocked) scheduleReassertBottom(80);
+}
+
 function createWindow() {
   const st = loadState();
-  const display = screen.getPrimaryDisplay().workArea;
-  const defaultBounds = {
-    width: Math.min(1160, Math.round(display.width * 0.74)),
-    height: Math.min(740, Math.round(display.height * 0.84)),
-    x: display.x + Math.round((display.width - Math.min(1160, Math.round(display.width * 0.74))) / 2),
-    y: display.y + Math.round((display.height - Math.min(740, Math.round(display.height * 0.84))) / 2),
-  };
-  const b = st.config.bounds || defaultBounds;
+  const b = ensureVisibleBounds(st.config.bounds);
 
   isLocked = !!st.config.ui.locked;
   mainWindow = new BrowserWindow({
@@ -639,7 +988,8 @@ function createWindow() {
     frame: false,
     transparent: true,
     hasShadow: false,
-    skipTaskbar: !!st.config.ui.desktopPin,
+    skipTaskbar: isLocked ? true : !!st.config.ui.desktopPin,
+    minimizable: !isLocked,
     resizable: !isLocked,
     movable: !isLocked,
     backgroundColor: '#00000000',
@@ -666,7 +1016,15 @@ function createWindow() {
   mainWindow.on('show', () => {
     if (isLocked) scheduleReassertBottom(45);
   });
+  mainWindow.on('minimize', (e) => {
+    if (isLocked) {
+      e.preventDefault();
+      try { mainWindow.restore(); } catch {}
+      scheduleReassertBottom(20);
+    }
+  });
   mainWindow.webContents.once('did-finish-load', () => {
+    sendWinZCommand('SELF', getMainHwndDecimal());
     if (isLocked) applyWindowBottomPin(true);
   });
 
@@ -676,9 +1034,18 @@ function createWindow() {
     saveBoundsTimer = setTimeout(() => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
       const cur = loadState();
-      cur.config.bounds = mainWindow.getBounds();
+      const rawBounds = mainWindow.getBounds();
+      if (!isLocked && !mainWindow.isMaximized() && cur.config.ui.edgeSnap !== false) {
+        const snapped = snapBoundsToEdge(rawBounds);
+        if (snapped.x !== rawBounds.x || snapped.y !== rawBounds.y) {
+          try { mainWindow.setPosition(snapped.x, snapped.y); } catch {}
+          rawBounds.x = snapped.x;
+          rawBounds.y = snapped.y;
+        }
+      }
+      cur.config.bounds = rawBounds;
       saveState(cur);
-    }, 400);
+    }, 260);
   };
   mainWindow.on('move', scheduleBoundsSave);
   mainWindow.on('resize', scheduleBoundsSave);
@@ -690,7 +1057,19 @@ function createWindow() {
   });
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
     writeCrashLog('render-process-gone', JSON.stringify(details));
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
+    const now = Date.now();
+    rendererCrashTimes = rendererCrashTimes.filter(ts => now - ts < 60000);
+    rendererCrashTimes.push(now);
+    if (rendererCrashTimes.length >= 2) {
+      const cur = loadState();
+      if (cur.config.ui.frostedBlur !== false) {
+        cur.config.ui.frostedBlur = false;
+        saveState(cur);
+      }
+    }
+    if (rendererCrashTimes.length <= 3 && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.reload();
+    }
   });
 }
 
@@ -700,20 +1079,9 @@ function registerIpc() {
 
   ipcMain.handle('state:save', (_, payload) => {
     const cur = loadState();
-    const nextConfig = payload.config
-      ? {
-          ...cur.config,
-          ...payload.config,
-          ui: payload.config.ui ? { ...cur.config.ui, ...payload.config.ui } : cur.config.ui,
-        }
-      : cur.config;
-    const next = {
-      ...cur,
-      config: nextConfig,
-      data: payload.data ? payload.data : cur.data,
-      lastSyncedAt: payload.lastSyncedAt !== undefined ? payload.lastSyncedAt : cur.lastSyncedAt,
-    };
+    const next = mergeStatePayload(cur, payload);
     saveState(next);
+    syncLanServerWithUi(next.config.ui);
     applyGlobalShortcuts(next.config.ui);
     updateTrayMenu();
     return next;
@@ -791,17 +1159,22 @@ function registerIpc() {
   });
 
   ipcMain.handle('win:info', () => ({ locked: isLocked, platform: process.platform }));
+  ipcMain.handle('win:is-fullscreen-busy', () => !!winZOtherFullscreen);
 
   ipcMain.handle('win:options', (_, opts = {}) => {
     const cur = loadState();
     if (typeof opts.locked === 'boolean') setDesktopLock(opts.locked);
     if (typeof opts.desktopPin === 'boolean' && mainWindow) {
       cur.config.ui.desktopPin = opts.desktopPin;
-      mainWindow.setSkipTaskbar(opts.desktopPin);
+      if (!isLocked) mainWindow.setSkipTaskbar(opts.desktopPin);
     }
     if (typeof opts.autoLaunch === 'boolean') {
       cur.config.ui.autoLaunch = opts.autoLaunch;
       app.setLoginItemSettings({ openAtLogin: opts.autoLaunch, path: process.execPath });
+    }
+    if (typeof opts.lanEnabled === 'boolean') {
+      cur.config.ui.lanEnabled = opts.lanEnabled;
+      syncLanServerWithUi(cur.config.ui);
     }
     saveState(cur);
     updateTrayMenu();
@@ -818,7 +1191,10 @@ function registerIpc() {
       return;
     }
     if (!mainWindow) return;
-    if (action === 'minimize') mainWindow.minimize();
+    if (action === 'minimize') {
+      if (!isLocked) mainWindow.minimize();
+      return;
+    }
     if (action === 'hide' || action === 'close' || action === 'quit') mainWindow.hide();
     if (action === 'toggle-max') {
       if (mainWindow.isMaximized()) mainWindow.unmaximize();
@@ -828,6 +1204,23 @@ function registerIpc() {
 
   ipcMain.handle('lan:info', () => (lanServer ? lanServer.getInfo() : { running: false, urls: [] }));
 }
+
+app.on('child-process-gone', (_event, details) => {
+  writeCrashLog('child-process-gone', JSON.stringify(details));
+  if (details && details.type === 'GPU') {
+    gpuCrashCount += 1;
+    if (gpuCrashCount >= 2) {
+      const cur = loadState();
+      if (cur.config.ui.frostedBlur !== false) {
+        cur.config.ui.frostedBlur = false;
+        saveState(cur);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('state:external-update', cur);
+        }
+      }
+    }
+  }
+});
 
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return;
@@ -855,37 +1248,36 @@ app.whenReady().then(() => {
     getState: () => loadState(),
     saveState: (payload) => {
       const cur = loadState();
-      const nextConfig = payload.config
-        ? {
-            ...cur.config,
-            ...payload.config,
-            ui: payload.config.ui ? { ...cur.config.ui, ...payload.config.ui } : cur.config.ui,
-          }
-        : cur.config;
-      const next = {
-        ...cur,
-        config: nextConfig,
-        data: payload.data ? payload.data : cur.data,
-      };
+      const next = mergeStatePayload(cur, payload);
       const saved = saveState(next);
+      syncLanServerWithUi(saved.config.ui);
       applyGlobalShortcuts(saved.config.ui);
       updateTrayMenu();
       return saved;
     },
     doSync: (data) => runSync(data),
-    doTestWebDav: (cfg) => webdav.testConnection(cfg),
+    doTestWebDav: (cfg) => {
+      const curPwd = loadState().config?.webdav?.password || '';
+      const resolvedCfg = cfg && cfg.password === '__SAVED__' ? { ...cfg, password: curPwd } : cfg;
+      return webdav.testConnection(resolvedCfg);
+    },
     notifyDesktopRefresh: (state) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('state:external-update', state);
       }
     },
   });
-  lanServer.start();
+  syncLanServerWithUi(loadState().config.ui);
 
   registerIpc();
   ensureWinZHelper();
   createWindow();
   updateTrayMenu();
+
+  screen.on('display-removed', rescueWindowToVisibleArea);
+  screen.on('display-metrics-changed', rescueWindowToVisibleArea);
+  powerMonitor.on('resume', rescueWindowToVisibleArea);
+  powerMonitor.on('unlock-screen', rescueWindowToVisibleArea);
 
   applyGlobalShortcuts(loadState().config.ui);
 });

@@ -9,7 +9,17 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 const extract = require('extract-zip');
 
-const UPDATER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) TeacherLayerCalendar-Updater/1.5.5';
+const UPDATER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) TeacherLayerCalendar-Updater/1.6.0';
+
+async function fetchWithTimeout(url, opts = {}, timeoutMs = 12000) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    return await fetch(url, ctrl ? { ...opts, signal: ctrl.signal } : opts);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function compareSemver(a, b) {
   const pa = String(a || '0.0.0').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
@@ -46,11 +56,11 @@ function normalizeGitHubSlug(source) {
 
 async function checkGitHubWithoutApiRateLimit(repoSlug, currentVersion) {
   const [latestRes, atomRes] = await Promise.all([
-    fetch(`https://github.com/${repoSlug}/releases/latest`, {
+    fetchWithTimeout(`https://github.com/${repoSlug}/releases/latest`, {
       redirect: 'follow',
       headers: { 'User-Agent': UPDATER_UA, Accept: 'text/html', 'Cache-Control': 'no-cache' },
     }).catch(() => null),
-    fetch(`https://github.com/${repoSlug}/releases.atom`, {
+    fetchWithTimeout(`https://github.com/${repoSlug}/releases.atom`, {
       headers: { 'User-Agent': UPDATER_UA, 'Cache-Control': 'no-cache' },
     }).catch(() => null),
   ]);
@@ -90,7 +100,7 @@ async function checkGitHubWithoutApiRateLimit(repoSlug, currentVersion) {
   }
 
   // 回退读取 raw.githubusercontent.com 上的 main/package.json（同样无限流）
-  const pkgRes = await fetch(`https://raw.githubusercontent.com/${repoSlug}/main/package.json`, {
+  const pkgRes = await fetchWithTimeout(`https://raw.githubusercontent.com/${repoSlug}/main/package.json`, {
     headers: { 'User-Agent': UPDATER_UA, 'Cache-Control': 'no-cache' },
   }).catch(() => null);
   if (pkgRes && pkgRes.ok) {
@@ -154,7 +164,7 @@ async function checkForUpdates(updateCfg = {}, currentVersion = '1.1.0') {
       } catch (directErr) {
         // 仅在网页/Atom/Raw 全部网络失败时，最后兜底请求 GitHub REST API
         const apiUrl = `https://api.github.com/repos/${repoSlug}/releases/latest`;
-        const res = await fetch(apiUrl, { headers: { 'User-Agent': UPDATER_UA } });
+        const res = await fetchWithTimeout(apiUrl, { headers: { 'User-Agent': UPDATER_UA } });
         if (res.status === 404) {
           return { ok: true, hasUpdate: false, configured: true, currentVersion, latestVersion: currentVersion, message: '该仓库暂未发布任何 Release 版本。' };
         }
@@ -169,7 +179,7 @@ async function checkForUpdates(updateCfg = {}, currentVersion = '1.1.0') {
       }
     } else {
       // 自定义 JSON 更新清单 URL
-      const res = await fetch(source, { headers: { 'Cache-Control': 'no-cache' } });
+      const res = await fetchWithTimeout(source, { headers: { 'Cache-Control': 'no-cache' } });
       if (!res.ok) throw new Error(`更新清单返回 HTTP ${res.status}`);
       const json = await res.json();
       latestVersion = String(json.version || currentVersion).replace(/^v/i, '');

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
   getWindowInfo: () => ipcRenderer.invoke('win:info'),
   setDesktopOptions: (opts) => ipcRenderer.invoke('win:options', opts),
   windowAction: (action) => ipcRenderer.invoke('win:action', action),
+  isFullscreenBusy: () => ipcRenderer.invoke('win:is-fullscreen-busy'),
   getLanInfo: () => ipcRenderer.invoke('lan:info'),
   onStateUpdated: (cb) => {
     const listener = (_, state) => cb(state);

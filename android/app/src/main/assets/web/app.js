@@ -11,6 +11,7 @@
   let anchorDate = new Date();
   let autoSyncTimer = null;
   let pollSyncTimer = null;
+  let persistDebounceTimer = null;
   let isSyncing = false;
   let isUiLocked = false;
   let isPrivacyMasked = false;
@@ -24,6 +25,8 @@
   let latestUpdateInfo = null;
   let savedPersonalLayers = { showCourse: true, showWork: true };
   let pendingClassScope = null;
+  let lastRenderedTodayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+  let sharedAudioCtx = null;
   const darkMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   const DEFAULT_UI_PREFS = {
@@ -41,6 +44,11 @@
     solarTermColor: '#16a34a',
     autoLaunch: false,
     desktopPin: true,
+    lanEnabled: true,
+    edgeSnap: true,
+    fullscreenDnd: true,
+    showCountdown: true,
+    dedupConsecutive: true,
     reminderEnabled: true,
     magnetSnap: true,
     showEvening: false,
@@ -101,21 +109,69 @@
     return '';
   }
 
+  const REPEAT_BADGE_MAP = { weekly: '↻每周', biweekly: '↻隔周', workdays: '↻工作日' };
+
+  function doesWorkMatchDate(w, ds) {
+    if (!w || w.deleted) return false;
+    const rep = w.repeat || 'none';
+    if (rep === 'none') return w.date === ds;
+    if (!w.date || ds < w.date) return false;
+    if (rep === 'weekly') return getIsoWeekday(parseDate(w.date)) === getIsoWeekday(parseDate(ds));
+    if (rep === 'biweekly') {
+      const diffDays = Math.round((parseDate(ds) - parseDate(w.date)) / 86400000);
+      return diffDays >= 0 && diffDays % 14 === 0;
+    }
+    if (rep === 'workdays') {
+      const wd = getIsoWeekday(parseDate(ds));
+      return wd >= 1 && wd <= 5;
+    }
+    return w.date === ds;
+  }
+
+  function isWorkDoneOnDate(w, ds) {
+    if (!w) return false;
+    const rep = w.repeat || 'none';
+    if (rep === 'none') return !!w.done;
+    return Array.isArray(w.doneDates) && w.doneDates.includes(ds);
+  }
+
+  function toggleWorkDoneOnDate(w, ds, forceVal) {
+    if (!w) return false;
+    const rep = w.repeat || 'none';
+    if (rep === 'none') {
+      w.done = forceVal !== undefined ? !!forceVal : !w.done;
+      return w.done;
+    }
+    if (!Array.isArray(w.doneDates)) w.doneDates = [];
+    const currentlyDone = w.doneDates.includes(ds);
+    const nextDone = forceVal !== undefined ? !!forceVal : !currentlyDone;
+    if (nextDone && !currentlyDone) w.doneDates.push(ds);
+    else if (!nextDone && currentlyDone) w.doneDates = w.doneDates.filter(d => d !== ds);
+    return nextDone;
+  }
+
+  function ensureCountdowns() {
+    if (!appState || !appState.data) return [];
+    if (!Array.isArray(appState.data.countdowns)) appState.data.countdowns = [];
+    return appState.data.countdowns;
+  }
+
   function getVisibleWorksForDate(ds) {
     const ui = appState?.config?.ui || DEFAULT_UI_PREFS;
     const todayStr = fmtDate(new Date());
     let arr = (appState?.data?.works || []).filter(w => {
       if (w.deleted) return false;
-      if (ui.showDoneWork === false && w.done) return false;
-      if (w.date === ds) return true;
-      if (ui.autoRollover && !w.done && ds === todayStr && w.date < todayStr) {
+      const doneHere = isWorkDoneOnDate(w, ds);
+      if (ui.showDoneWork === false && doneHere) return false;
+      if (doesWorkMatchDate(w, ds)) return true;
+      if ((w.repeat || 'none') === 'none' && ui.autoRollover && !w.done && ds === todayStr && w.date < todayStr) {
         const diffDays = Math.round((parseDate(todayStr) - parseDate(w.date)) / 86400000);
         return diffDays >= 1 && diffDays <= 30;
       }
       return false;
     });
     if (ui.doneToBottom !== false) {
-      arr = arr.slice().sort((a, b) => (Number(!!a.done) - Number(!!b.done)) || (toMin(a.start) - toMin(b.start)));
+      arr = arr.slice().sort((a, b) => (Number(isWorkDoneOnDate(a, ds)) - Number(isWorkDoneOnDate(b, ds))) || (toMin(a.start) - toMin(b.start)));
     }
     return arr;
   }
@@ -453,6 +509,24 @@
     }
   }
 
+  function annotateConsecutiveCourses(activeList) {
+    if (!Array.isArray(activeList) || activeList.length < 2) return activeList;
+    const sorted = activeList.slice().sort((a, b) => toMin(a.start) - toMin(b.start));
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const cur = sorted[i];
+      const gap = toMin(cur.start) - toMin(prev.end);
+      const t1 = String(prev.title || '').trim();
+      const t2 = String(cur.title || '').trim();
+      if (t1 && t1 === t2 && gap >= 0 && gap <= 25) {
+        prev.isConsecutive = true;
+        cur.isConsecutive = true;
+        cur.isSecondOfConsec = true;
+      }
+    }
+    return activeList;
+  }
+
   // ===== 核心：计算某天生效的课表（支持 source='my' 个人底层课表 / source='class' 班主任班级课表） =====
   function getEffectiveCoursesForDate(dateStr, source = 'my') {
     const d = parseDate(dateStr);
@@ -547,6 +621,7 @@
       });
     });
 
+    annotateConsecutiveCourses(activeList);
     return { activeList, ghostList };
   }
 
@@ -565,6 +640,13 @@
       clearTimeout(autoSyncTimer);
       autoSyncTimer = setTimeout(() => performSync(true), 2000);
     }
+  }
+
+  function persistDebounced(triggerSync = false, delayMs = 180) {
+    clearTimeout(persistDebounceTimer);
+    persistDebounceTimer = setTimeout(() => {
+      persistAndScheduleSync(triggerSync);
+    }, delayMs);
   }
 
   function updateSyncBadge(status, text) {
@@ -630,10 +712,10 @@
   function pushAndroidWidgetSummary() {
     const todayStr = fmtDate(new Date());
     const { activeList } = getEffectiveCoursesForDate(todayStr, 'my');
-    const todayWorks = (appState.data.works || []).filter(w => !w.deleted && w.date === todayStr);
+    const todayWorks = (appState.data.works || []).filter(w => doesWorkMatchDate(w, todayStr));
     const items = [
       ...activeList.map(c => ({ kind: 'course', start: c.start, end: c.end, title: (c.isMoved ? '[调]' : '') + c.title })),
-      ...todayWorks.map(w => ({ kind: 'work', start: w.start, end: w.end, title: (w.done ? '☑ ' : '☐ ') + w.title })),
+      ...todayWorks.map(w => ({ kind: 'work', start: w.start, end: w.end, title: (isWorkDoneOnDate(w, todayStr) ? '☑ ' : '☐ ') + w.title })),
     ].sort((a, b) => toMin(a.start) - toMin(b.start));
     window.SyncBridge.notifyWidgetSummary(JSON.stringify({ date: todayStr, items }));
   }
@@ -778,6 +860,11 @@
     setVal('col-term-text', ui.solarTermColor || DEFAULT_UI_PREFS.solarTermColor);
 
     setChk('sw-show-weeknum', ui.showWeekNum !== false);
+    setChk('sw-show-countdown', ui.showCountdown !== false);
+    setChk('sw-dedup-consec', ui.dedupConsecutive !== false);
+    setChk('sw-fullscreen-dnd', ui.fullscreenDnd !== false);
+    setChk('sw-edge-snap', ui.edgeSnap !== false);
+    setChk('opt-lan-enabled', ui.lanEnabled !== false);
     setChk('sw-show-rest', !!ui.showWeekend);
     const restList = Array.isArray(ui.restWeekdays) ? ui.restWeekdays : [6, 7];
     document.querySelectorAll('[data-rest-wd]').forEach(chk => { chk.checked = restList.includes(Number(chk.dataset.restWd)); });
@@ -868,6 +955,46 @@
     return r ? `${h}小时${r}分` : `${h}小时`;
   }
 
+  function renderCountdownPill() {
+    const pill = document.getElementById('topbar-countdown-pill');
+    if (!pill || !appState) return;
+    const ui = appState.config.ui || DEFAULT_UI_PREFS;
+    if (ui.showCountdown === false) {
+      pill.classList.add('hidden');
+      return;
+    }
+    pill.classList.remove('hidden');
+    const today = parseDate(fmtDate(new Date()));
+    const list = ensureCountdowns()
+      .filter(c => !c.deleted && c.targetDate)
+      .map(c => ({
+        ...c,
+        daysLeft: Math.round((parseDate(c.targetDate) - today) / 86400000),
+      }))
+      .sort((a, b) => {
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+        const aUp = a.daysLeft >= 0, bUp = b.daysLeft >= 0;
+        if (aUp !== bUp) return aUp ? -1 : 1;
+        return Math.abs(a.daysLeft) - Math.abs(b.daysLeft);
+      });
+    const top = list[0];
+    if (!top) {
+      pill.classList.remove('urgent-cd');
+      pill.textContent = '🎯 +倒数日';
+      return;
+    }
+    if (top.daysLeft === 0) {
+      pill.classList.add('urgent-cd');
+      pill.textContent = `🎯 今天：${top.title}`;
+    } else if (top.daysLeft > 0) {
+      pill.classList.toggle('urgent-cd', top.daysLeft <= 7);
+      pill.textContent = `🎯 距 ${top.title} ${top.daysLeft}天`;
+    } else {
+      pill.classList.remove('urgent-cd');
+      pill.textContent = `🎯 ${top.title} 已过${-top.daysLeft}天`;
+    }
+  }
+
   function renderNextCountdown() {
     const pill = document.getElementById('topbar-next-pill');
     if (!pill || !appState) return;
@@ -876,7 +1003,7 @@
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const homeroomOn = !!appState.config.ui.homeroomMode;
     const { activeList } = getEffectiveCoursesForDate(todayStr, homeroomOn ? 'class' : 'my');
-    const works = homeroomOn ? [] : (appState.data.works || []).filter(w => !w.deleted && !w.done && w.date === todayStr);
+    const works = homeroomOn ? [] : (appState.data.works || []).filter(w => doesWorkMatchDate(w, todayStr) && !isWorkDoneOnDate(w, todayStr));
     const items = [
       ...activeList.map(c => ({ s: toMin(c.start), e: toMin(c.end), label: c.title })),
       ...works.map(w => ({ s: toMin(w.start), e: toMin(w.end), label: w.title })),
@@ -894,7 +1021,9 @@
 
   function render() {
     if (!appState) return;
+    lastRenderedTodayStr = fmtDate(new Date());
     ensureClassTimetables();
+    ensureCountdowns();
     ensureUiPrefs();
     applyUiControlsFromState();
     applyLockUi(isUiLocked);
@@ -902,6 +1031,7 @@
     updateTopbarDateLabel();
     updateResponsiveLayout();
     renderNextCountdown();
+    renderCountdownPill();
     if (typeof renderInbox === 'function') renderInbox();
 
     const vp = document.getElementById('main-viewport');
@@ -1046,6 +1176,7 @@
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
           const height = Math.max(28, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
           const isMine = /历史|道法|地理|班会|（张）|\(张\)/.test(c.title);
+          const consecBadge = (c.isConsecutive && ui.dedupConsecutive !== false) ? '<span class="badge-consec" title="连堂课程">连堂</span>' : '';
           colInner += `
             <div class="course-block course-${c.color} ${isMine ? 'my-class-highlight' : ''}" style="top:${top}px;height:${height}px;opacity:0.94;${courseCustomStyle(c.customBg)}"
                  data-course-source="class"
@@ -1054,6 +1185,7 @@
                  data-cur-title="${escapeAttr(c.title)}" data-cur-note="${escapeAttr(c.note)}" data-override-id="${c.overrideId || ''}">
               <div class="course-title">
                 ${c.isMoved ? '<span class="badge-moved">调</span>' : ''}
+                ${consecBadge}
                 ${isMine ? '<span title="我任教的课">★</span>' : ''}
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.title)}</span>
               </div>
@@ -1080,6 +1212,7 @@
           if (e <= range.start || s >= range.end) return;
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
           const height = Math.max(28, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
+          const consecBadge = (c.isConsecutive && ui.dedupConsecutive !== false) ? '<span class="badge-consec" title="连堂课（仅在第一节课前提醒一次）">连堂</span>' : '';
           colInner += `
             <div class="course-block course-${c.color}" style="top:${top}px;height:${height}px;opacity:${opCourse};${courseCustomStyle(c.customBg)}"
                  data-course-source="my"
@@ -1089,6 +1222,7 @@
                  title="按住拖动可磁吸跳过课间单次调课或互换，点击可设置背景色">
               <div class="course-title">
                 ${c.isMoved ? '<span class="badge-moved">调</span>' : ''}
+                ${consecBadge}
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.title)}</span>
               </div>
               ${height >= 26 ? `<div class="course-time">${c.start}-${c.end}${c.note ? ' · ' + escapeHtml(c.note) : ''}</div>` : ''}
@@ -1101,19 +1235,22 @@
           const s = toMin(w.start), e = toMin(w.end);
           if (e <= range.start || s >= range.end) return;
           const isOverlap = showCourse && activeList.some(c => Math.max(s, toMin(c.start)) < Math.min(e, toMin(c.end)));
-          const isRolled = w.date !== ds;
+          const rep = w.repeat || 'none';
+          const isRolled = rep === 'none' && w.date !== ds;
+          const isDone = isWorkDoneOnDate(w, ds);
+          const repBadge = REPEAT_BADGE_MAP[rep] ? `<span class="work-repeat-tag">${REPEAT_BADGE_MAP[rep]}</span>` : '';
           const prefix = formatWorkPrefix(wIdx);
           const top = Math.max(0, (s - range.start) * PX_PER_MIN);
           const height = Math.max(28, (Math.min(e, range.end) - Math.max(s, range.start)) * PX_PER_MIN);
           const cls = ['work-block'];
           if (w.urgent) cls.push('urgent');
           if (isOverlap) cls.push('overlap');
-          if (w.done) cls.push('done');
+          if (isDone) cls.push('done');
           colInner += `
             <div class="${cls.join(' ')}" style="top:${top}px;height:${height}px;opacity:${opWork}" data-work-id="${w.id}">
               <div class="work-header">
-                <span class="work-check" data-toggle-done="${w.id}">${w.done ? '☑' : '☐'}</span>
-                <span class="work-title-text">${isRolled ? '<span class="work-rollover-tag">顺延</span>' : ''}${isOverlap ? '⚡ ' : ''}${prefix}${escapeHtml(w.title)}</span>
+                <span class="work-check" data-toggle-done="${w.id}" data-work-date="${ds}">${isDone ? '☑' : '☐'}</span>
+                <span class="work-title-text">${isRolled ? '<span class="work-rollover-tag">顺延</span>' : ''}${repBadge}${isOverlap ? '⚡ ' : ''}${prefix}${escapeHtml(w.title)}</span>
               </div>
               ${height >= 26 ? `<div class="work-time">${w.start}-${w.end}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>` : ''}
               <div class="work-resize-handle" data-resize-work="${w.id}" title="上下拖拉调整时长"></div>
@@ -1200,8 +1337,9 @@
         const pills = [];
         if (!homeroomOn && ui.showWork !== false) {
           works.slice(0, 2).forEach((wk, idx) => {
-            const isRolled = wk.date !== ds;
-            pills.push(`<div class="month-pill work ${wk.urgent ? 'urgent' : ''}">${isRolled ? '<span class="work-rollover-tag">顺延</span>' : ''}${formatWorkPrefix(idx)}${wk.start} ${escapeHtml(wk.title)}</div>`);
+            const isRolled = (wk.repeat || 'none') === 'none' && wk.date !== ds;
+            const repIcon = (wk.repeat && wk.repeat !== 'none') ? '↻' : '';
+            pills.push(`<div class="month-pill work ${wk.urgent ? 'urgent' : ''}">${isRolled ? '<span class="work-rollover-tag">顺延</span>' : ''}${repIcon}${formatWorkPrefix(idx)}${wk.start} ${escapeHtml(wk.title)}</div>`);
           });
         }
         if (homeroomOn || ui.showCourse !== false) {
@@ -1293,9 +1431,10 @@
         e.stopPropagation();
         const w = (appState.data.works || []).find(x => x.id === el.dataset.toggleDone);
         if (w) {
-          w.done = !w.done;
+          const targetDs = el.dataset.workDate || w.date || fmtDate(new Date());
+          const nowDone = toggleWorkDoneOnDate(w, targetDs);
           w.updatedAt = Date.now();
-          if (w.done && appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
+          if (nowDone && appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
           render();
           await persistAndScheduleSync();
         }
@@ -1883,7 +2022,9 @@
     document.getElementById('wk-start').value = w ? w.start : (defaults?.start || '09:00');
     document.getElementById('wk-end').value = w ? w.end : (defaults?.end || '09:50');
     document.getElementById('wk-urgent').checked = w ? !!w.urgent : false;
-    document.getElementById('wk-done').checked = w ? !!w.done : false;
+    document.getElementById('wk-done').checked = w ? isWorkDoneOnDate(w, w.date) : false;
+    const repEl = document.getElementById('wk-repeat');
+    if (repEl) repEl.value = (w && w.repeat) ? w.repeat : 'none';
     document.getElementById('wk-note').value = w ? (w.note || '') : '';
     document.getElementById('btn-wk-delete').classList.toggle('hidden', !w);
     updateWorkConflictPreview();
@@ -2126,10 +2267,14 @@
     if (window.SyncBridge.mode === 'desktop') {
       document.getElementById('opt-autolaunch').checked = !!ui.autoLaunch;
       document.getElementById('opt-desktop-pin').checked = !!ui.desktopPin;
+      const lanSw = document.getElementById('opt-lan-enabled');
+      if (lanSw) lanSw.checked = ui.lanEnabled !== false;
       const lan = await window.SyncBridge.getLanInfo();
-      document.getElementById('lan-url-box').innerHTML = (lan.urls && lan.urls.length)
-        ? `📱 <strong>手机同 Wi-Fi 访问地址</strong>：<code>${lan.urls.join(' / ')}</code>`
-        : '未检测到局域网 IP。';
+      document.getElementById('lan-url-box').innerHTML = ui.lanEnabled === false
+        ? '📡 局域网同步服务已关闭（开启上方开关后即可用手机扫码/浏览器访问）'
+        : ((lan.urls && lan.urls.length)
+            ? `📱 <strong>手机同 Wi-Fi 访问地址</strong>：<code>${lan.urls.join(' / ')}</code>`
+            : '未检测到局域网 IP。');
     }
     applyUiControlsFromState();
     switchSettingsTab(tab);
@@ -2246,13 +2391,81 @@
     });
   }
 
+  function renderCountdownModal() {
+    const box = document.getElementById('cd-list');
+    if (!box) return;
+    const today = parseDate(fmtDate(new Date()));
+    const list = ensureCountdowns()
+      .filter(c => !c.deleted && c.targetDate)
+      .map(c => ({ ...c, daysLeft: Math.round((parseDate(c.targetDate) - today) / 86400000) }))
+      .sort((a, b) => (!!b.pinned - !!a.pinned) || (a.daysLeft - b.daysLeft));
+    if (!list.length) {
+      box.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:18px;">暂无重要节点或考试倒数日，可在上方快速添加</div>';
+      return;
+    }
+    box.innerHTML = list.map(c => {
+      const badge = c.daysLeft === 0
+        ? '<span style="color:var(--apple-red);font-weight:700;">就是今天</span>'
+        : (c.daysLeft > 0
+            ? `<span style="color:${c.daysLeft <= 7 ? 'var(--apple-red)' : 'var(--apple-blue)'};font-weight:700;">还有 ${c.daysLeft} 天</span>`
+            : `<span style="color:var(--text-muted);">已过 ${-c.daysLeft} 天</span>`);
+      return `<div class="mgr-row">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+          <span>${c.pinned ? '📌' : '🎯'}</span>
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.title)}</div>
+            <div style="font-size:11px;color:var(--text-muted);">${c.targetDate} · ${badge}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0;">
+          <button type="button" class="btn" style="padding:2px 8px;font-size:11px;" data-cd-pin="${c.id}">${c.pinned ? '取消置顶' : '置顶'}</button>
+          <button type="button" class="btn btn-danger" style="padding:2px 8px;font-size:11px;" data-cd-del="${c.id}">删除</button>
+        </div>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-cd-pin]').forEach(btn => btn.addEventListener('click', async () => {
+      const item = ensureCountdowns().find(x => x.id === btn.dataset.cdPin);
+      if (item) {
+        item.pinned = !item.pinned;
+        item.updatedAt = Date.now();
+        renderCountdownModal();
+        renderCountdownPill();
+        await persistAndScheduleSync();
+      }
+    }));
+    box.querySelectorAll('[data-cd-del]').forEach(btn => btn.addEventListener('click', async () => {
+      const item = ensureCountdowns().find(x => x.id === btn.dataset.cdDel);
+      if (item) {
+        item.deleted = true;
+        item.updatedAt = Date.now();
+        renderCountdownModal();
+        renderCountdownPill();
+        await persistAndScheduleSync();
+      }
+    }));
+  }
+
+  function openCountdownModal() {
+    const defD = addDays(new Date(), 14);
+    const dEl = document.getElementById('cd-date');
+    if (dEl && !dEl.value) dEl.value = fmtDate(defD);
+    renderCountdownModal();
+    openModal('modal-countdown');
+    setTimeout(() => document.getElementById('cd-title')?.focus(), 30);
+  }
+
   function renderMemoMgrList() {
     const ui = appState?.config?.ui || DEFAULT_UI_PREFS;
+    const todayStr = fmtDate(new Date());
     const list = (appState.data.works || [])
       .filter(w => !w.deleted)
-      .filter(w => memoMgrFilter === 'all' ? true : (memoMgrFilter === 'done' ? w.done : !w.done))
+      .filter(w => {
+        const done = isWorkDoneOnDate(w, todayStr);
+        return memoMgrFilter === 'all' ? true : (memoMgrFilter === 'done' ? done : !done);
+      })
       .sort((a, b) => {
-        if (ui.doneToBottom !== false && !!a.done !== !!b.done) return Number(!!a.done) - Number(!!b.done);
+        const aDone = isWorkDoneOnDate(a, todayStr), bDone = isWorkDoneOnDate(b, todayStr);
+        if (ui.doneToBottom !== false && aDone !== bDone) return Number(aDone) - Number(bDone);
         return a.date.localeCompare(b.date) || toMin(a.start) - toMin(b.start);
       });
     const box = document.getElementById('memo-mgr-list');
@@ -2260,12 +2473,17 @@
       box.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:18px;">当前筛选下暂无便签/干活记录</div>';
       return;
     }
-    box.innerHTML = list.map((w, idx) => `
+    box.innerHTML = list.map((w, idx) => {
+      const rep = w.repeat || 'none';
+      const checkDs = rep === 'none' ? w.date : todayStr;
+      const done = isWorkDoneOnDate(w, checkDs);
+      const repTag = REPEAT_BADGE_MAP[rep] ? `<span style="color:var(--apple-blue);font-size:11px;margin-left:4px;">${REPEAT_BADGE_MAP[rep]}</span>` : '';
+      return `
       <div class="mgr-row">
         <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-          <button class="btn" style="padding:2px 7px;" data-mm-toggle="${w.id}">${w.done ? '☑' : '☐'}</button>
+          <button class="btn" style="padding:2px 7px;" data-mm-toggle="${w.id}" data-work-date="${checkDs}">${done ? '☑' : '☐'}</button>
           <div style="min-width:0;flex:1;">
-            <div style="font-weight:600;${w.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${w.urgent ? '🔴 ' : ''}${formatWorkPrefix(idx)}${escapeHtml(w.title)}</div>
+            <div style="font-weight:600;${done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${w.urgent ? '🔴 ' : ''}${formatWorkPrefix(idx)}${escapeHtml(w.title)}${repTag}</div>
             <div style="font-size:11px;color:var(--text-muted);">${w.date} ${w.start}-${w.end}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>
           </div>
         </div>
@@ -2273,14 +2491,15 @@
           <button class="btn lock-disabled" style="padding:2px 8px;font-size:11px;" data-mm-edit="${w.id}">编辑</button>
           <button class="btn btn-danger lock-disabled" style="padding:2px 8px;font-size:11px;" data-mm-del="${w.id}">删</button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     box.querySelectorAll('[data-mm-toggle]').forEach(b => b.addEventListener('click', async () => {
       const w = appState.data.works.find(x => x.id === b.dataset.mmToggle);
       if (w) {
-        w.done = !w.done;
+        const nowDone = toggleWorkDoneOnDate(w, b.dataset.workDate || fmtDate(new Date()));
         w.updatedAt = Date.now();
-        if (w.done && appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
+        if (nowDone && appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
         renderMemoMgrList(); render(); await persistAndScheduleSync();
       }
     }));
@@ -2412,20 +2631,25 @@
     if (dailyCourseSummary.length) lines.push(...dailyCourseSummary);
     else lines.push('  · 本周暂无个人排课记录');
 
-    const startStr = fmtDate(mon), endStr = fmtDate(sun);
-    const weekWorks = (appState.data.works || []).filter(w => !w.deleted && w.date >= startStr && w.date <= endStr)
-      .sort((a, b) => a.date.localeCompare(b.date) || toMin(a.start) - toMin(b.start));
-    const doneWorks = weekWorks.filter(w => w.done);
-    const todoWorks = weekWorks.filter(w => !w.done);
+    const weekInstances = [];
+    for (let i = 0; i < 7; i++) {
+      const ds = fmtDate(addDays(mon, i));
+      (appState.data.works || []).filter(w => doesWorkMatchDate(w, ds)).forEach(w => {
+        weekInstances.push({ w, ds, done: isWorkDoneOnDate(w, ds) });
+      });
+    }
+    weekInstances.sort((a, b) => a.ds.localeCompare(b.ds) || toMin(a.w.start) - toMin(b.w.start));
+    const doneWorks = weekInstances.filter(x => x.done);
+    const todoWorks = weekInstances.filter(x => !x.done);
 
     lines.push('');
     lines.push(`二、本周已完成事务（${doneWorks.length} 项）`);
-    if (doneWorks.length) doneWorks.forEach((w, idx) => lines.push(`  ${idx + 1}. [${w.date.slice(5)} ${w.start}] ${w.title}${w.note ? '（' + w.note + '）' : ''}`));
+    if (doneWorks.length) doneWorks.forEach(({ w, ds }, idx) => lines.push(`  ${idx + 1}. [${ds.slice(5)} ${w.start}] ${w.title}${w.note ? '（' + w.note + '）' : ''}`));
     else lines.push('  · 暂无已勾选完成项');
 
     lines.push('');
     lines.push(`三、本周待办与下周衔接（${todoWorks.length} 项）`);
-    if (todoWorks.length) todoWorks.forEach((w, idx) => lines.push(`  ${idx + 1}. [${w.date.slice(5)} ${w.start}] ${w.title}${w.urgent ? ' [重要]' : ''}`));
+    if (todoWorks.length) todoWorks.forEach(({ w, ds }, idx) => lines.push(`  ${idx + 1}. [${ds.slice(5)} ${w.start}] ${w.title}${w.urgent ? ' [重要]' : ''}`));
     else lines.push('  · 本周待办已全部清零');
 
     return lines.join('\n');
@@ -3064,6 +3288,8 @@
         } else if (act === 'weekly-report') {
           document.getElementById('wr-content').value = generateWeeklyReportText();
           openModal('modal-weekly-report');
+        } else if (act === 'countdown-mgr') {
+          openCountdownModal();
         } else if (act === 'search') {
           openSearchModal(false);
         } else if (act === 'sys-settings' || act === 'theme') {
@@ -3116,12 +3342,12 @@
     });
     const customSkinInp = document.getElementById('inp-custom-skin');
     if (customSkinInp) {
-      customSkinInp.addEventListener('input', async (e) => {
+      customSkinInp.addEventListener('input', (e) => {
         appState.config.ui.skinColor = e.target.value;
         appState.config.ui.skinColorName = `自定义 ${e.target.value.toUpperCase()}`;
         if ((appState.config.ui.bgAlpha ?? 72) < 20) appState.config.ui.bgAlpha = 98;
         render();
-        await persistAndScheduleSync(false);
+        persistDebounced(false);
       });
     }
 
@@ -3194,21 +3420,25 @@
       render(); await persistAndScheduleSync(false);
     });
 
-    const saveSimpleUi = async () => {
+    const applySimpleUi = () => {
       appState.config.ui.magnetSnap = document.getElementById('chk-magnet').checked;
       appState.config.ui.courseOpacity = Number(document.getElementById('rng-course-opacity').value);
       appState.config.ui.workOpacity = Number(document.getElementById('rng-work-opacity').value);
-      render(); await persistAndScheduleSync(false);
+      render();
     };
-    document.getElementById('chk-magnet').addEventListener('change', saveSimpleUi);
+    document.getElementById('chk-magnet').addEventListener('change', async () => {
+      applySimpleUi(); await persistAndScheduleSync(false);
+    });
     ['rng-course-opacity', 'rng-work-opacity'].forEach(id => {
-      document.getElementById(id).addEventListener('input', saveSimpleUi);
+      document.getElementById(id).addEventListener('input', () => {
+        applySimpleUi(); persistDebounced(false);
+      });
     });
     const bgAlphaSetEl = document.getElementById('rng-bg-alpha-set');
     if (bgAlphaSetEl) {
-      bgAlphaSetEl.addEventListener('input', async (e) => {
+      bgAlphaSetEl.addEventListener('input', (e) => {
         appState.config.ui.bgAlpha = Number(e.target.value);
-        render(); await persistAndScheduleSync(false);
+        render(); persistDebounced(false);
       });
     }
 
@@ -3297,25 +3527,25 @@
       appState.config.ui.fontSize = Number(e.target.value) || 13;
       render(); await persistAndScheduleSync(false);
     });
-    document.getElementById('col-text-main')?.addEventListener('input', async (e) => {
+    document.getElementById('col-text-main')?.addEventListener('input', (e) => {
       appState.config.ui.textMainColor = e.target.value;
-      render(); await persistAndScheduleSync(false);
+      render(); persistDebounced(false);
     });
-    document.getElementById('col-today-accent')?.addEventListener('input', async (e) => {
+    document.getElementById('col-today-accent')?.addEventListener('input', (e) => {
       appState.config.ui.todayAccent = e.target.value;
-      render(); await persistAndScheduleSync(false);
+      render(); persistDebounced(false);
     });
-    document.getElementById('col-rest-bg')?.addEventListener('input', async (e) => {
+    document.getElementById('col-rest-bg')?.addEventListener('input', (e) => {
       appState.config.ui.restColBg = e.target.value;
-      render(); await persistAndScheduleSync(false);
+      render(); persistDebounced(false);
     });
-    document.getElementById('col-holiday-text')?.addEventListener('input', async (e) => {
+    document.getElementById('col-holiday-text')?.addEventListener('input', (e) => {
       appState.config.ui.holidayColor = e.target.value;
-      render(); await persistAndScheduleSync(false);
+      render(); persistDebounced(false);
     });
-    document.getElementById('col-term-text')?.addEventListener('input', async (e) => {
+    document.getElementById('col-term-text')?.addEventListener('input', (e) => {
       appState.config.ui.solarTermColor = e.target.value;
-      render(); await persistAndScheduleSync(false);
+      render(); persistDebounced(false);
     });
     document.getElementById('btn-reset-colors')?.addEventListener('click', async () => {
       Object.assign(appState.config.ui, {
@@ -3332,6 +3562,63 @@
     document.getElementById('sw-show-weeknum')?.addEventListener('change', async (e) => {
       appState.config.ui.showWeekNum = !!e.target.checked;
       render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('topbar-countdown-pill')?.addEventListener('click', openCountdownModal);
+    document.getElementById('btn-open-cd-from-set')?.addEventListener('click', () => {
+      closeModal('modal-settings');
+      openCountdownModal();
+    });
+    document.querySelectorAll('[data-cd-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('cd-title').value = btn.dataset.cdPreset;
+        document.getElementById('cd-date')?.focus();
+      });
+    });
+    document.getElementById('btn-cd-add')?.addEventListener('click', async () => {
+      const title = document.getElementById('cd-title').value.trim();
+      const targetDate = document.getElementById('cd-date').value;
+      const pinned = !!document.getElementById('cd-pinned').checked;
+      if (!title || !targetDate) { showToast('请填写节点名称与目标日期'); return; }
+      ensureCountdowns().push({ id: uid('cd'), title, targetDate, pinned, updatedAt: Date.now(), deleted: false });
+      document.getElementById('cd-title').value = '';
+      renderCountdownModal();
+      renderCountdownPill();
+      await persistAndScheduleSync();
+      showToast(`🎯 已添加倒数日「${title}」`);
+    });
+    document.getElementById('sw-show-countdown')?.addEventListener('change', async (e) => {
+      appState.config.ui.showCountdown = !!e.target.checked;
+      renderCountdownPill();
+      await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-dedup-consec')?.addEventListener('change', async (e) => {
+      appState.config.ui.dedupConsecutive = !!e.target.checked;
+      render(); await persistAndScheduleSync(false);
+    });
+    document.getElementById('sw-fullscreen-dnd')?.addEventListener('change', async (e) => {
+      appState.config.ui.fullscreenDnd = !!e.target.checked;
+      await persistAndScheduleSync(false);
+      showToast(appState.config.ui.fullscreenDnd ? '🎬 已开启全屏投屏/PPT 自动静默提醒' : '已关闭全屏自动静默');
+    });
+    document.getElementById('sw-edge-snap')?.addEventListener('change', async (e) => {
+      appState.config.ui.edgeSnap = !!e.target.checked;
+      await persistAndScheduleSync(false);
+      showToast(appState.config.ui.edgeSnap ? '🧲 已开启屏幕边缘磁吸对齐' : '已关闭窗口边缘磁吸');
+    });
+    document.getElementById('opt-lan-enabled')?.addEventListener('change', async (e) => {
+      const lanEnabled = !!e.target.checked;
+      appState.config.ui.lanEnabled = lanEnabled;
+      if (window.SyncBridge.mode === 'desktop') {
+        await window.SyncBridge.setDesktopOptions({ lanEnabled });
+        const lan = await window.SyncBridge.getLanInfo();
+        const box = document.getElementById('lan-url-box');
+        if (box) {
+          box.innerHTML = !lanEnabled
+            ? '📡 局域网同步服务已关闭（开启上方开关后即可用手机访问）'
+            : ((lan.urls && lan.urls.length) ? `📱 <strong>手机同 Wi-Fi 访问地址</strong>：<code>${lan.urls.join(' / ')}</code>` : '未检测到局域网 IP。');
+        }
+      }
+      await persistAndScheduleSync(false);
     });
     document.getElementById('sw-show-rest')?.addEventListener('change', async (e) => {
       appState.config.ui.showWeekend = !!e.target.checked;
@@ -3798,11 +4085,26 @@
       const date = document.getElementById('wk-date').value, start = document.getElementById('wk-start').value, end = document.getElementById('wk-end').value;
       if (!title || !date || !start || !end || toMin(end) <= toMin(start)) { showToast('请填写事项名称和正确的起止时间'); return; }
       const now = Date.now();
-      const rec = { title, date, start, end, urgent: document.getElementById('wk-urgent').checked, done: document.getElementById('wk-done').checked, note: document.getElementById('wk-note').value.trim(), updatedAt: now, deleted: false };
-      if (activeWorkId) Object.assign(appState.data.works.find(x => x.id === activeWorkId), rec);
-      else appState.data.works.push({ id: uid('w'), ...rec });
+      const repeat = document.getElementById('wk-repeat')?.value || 'none';
+      const checkedDone = document.getElementById('wk-done').checked;
+      const rec = {
+        title, date, start, end, repeat,
+        urgent: document.getElementById('wk-urgent').checked,
+        done: repeat === 'none' ? checkedDone : false,
+        note: document.getElementById('wk-note').value.trim(),
+        updatedAt: now, deleted: false,
+      };
+      if (activeWorkId) {
+        const target = appState.data.works.find(x => x.id === activeWorkId);
+        Object.assign(target, rec);
+        if (repeat !== 'none') toggleWorkDoneOnDate(target, date, checkedDone);
+      } else {
+        const item = { id: uid('w'), ...rec };
+        if (repeat !== 'none' && checkedDone) item.doneDates = [date];
+        appState.data.works.push(item);
+      }
       closeModal('modal-work'); render(); await persistAndScheduleSync();
-      showToast('已保存干活事项');
+      showToast(repeat !== 'none' ? '已保存重复待办事项' : '已保存干活事项');
     });
     document.getElementById('btn-wk-delete').addEventListener('click', async () => {
       const w = appState.data.works.find(x => x.id === activeWorkId);
@@ -3930,9 +4232,12 @@
       if (window.SyncBridge.mode === 'desktop') {
         const autoLaunch = document.getElementById('opt-autolaunch').checked;
         const desktopPin = document.getElementById('opt-desktop-pin').checked;
+        const lanEl = document.getElementById('opt-lan-enabled');
+        const lanEnabled = lanEl ? lanEl.checked : true;
         appState.config.ui.autoLaunch = autoLaunch;
         appState.config.ui.desktopPin = desktopPin;
-        await window.SyncBridge.setDesktopOptions({ autoLaunch, desktopPin });
+        appState.config.ui.lanEnabled = lanEnabled;
+        await window.SyncBridge.setDesktopOptions({ autoLaunch, desktopPin, lanEnabled });
         await window.SyncBridge.saveState(appState);
         showToast('桌面选项已保存');
       }
@@ -4039,7 +4344,8 @@
       if (activeReminderWorkId) {
         const w = (appState.data.works || []).find(x => x.id === activeReminderWorkId);
         if (w) {
-          w.done = true; w.updatedAt = Date.now();
+          toggleWorkDoneOnDate(w, activeReminderWorkDate || w.date || fmtDate(new Date()), true);
+          w.updatedAt = Date.now();
           if (appState.config.ui.doneSound !== 'none') playSoundEffect(appState.config.ui.doneSound);
           render(); await persistAndScheduleSync(); showToast(`☑ 已完成：${w.title}`);
         }
@@ -4132,6 +4438,7 @@
 
   const firedReminders = new Set();
   let activeReminderWorkId = null;
+  let activeReminderWorkDate = null;
   let reminderAutoHide = null;
 
   function playSoundEffect(kind = 'chime') {
@@ -4139,7 +4446,13 @@
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
-      const ctx = new Ctx();
+      if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+        sharedAudioCtx = new Ctx();
+      }
+      if (sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume().catch(() => {});
+      }
+      const ctx = sharedAudioCtx;
       const seqMap = {
         ding: [[988, 0, 0.24]],
         bubble: [[523, 0, 0.14], [784, 0.09, 0.20]],
@@ -4156,6 +4469,10 @@
         gain.gain.exponentialRampToValueAtTime(0.08, t0 + 0.025);
         gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
         osc.connect(gain); gain.connect(ctx.destination);
+        osc.onended = () => {
+          try { osc.disconnect(); } catch {}
+          try { gain.disconnect(); } catch {}
+        };
         osc.start(t0); osc.stop(t0 + dur + 0.02);
       });
     } catch {}
@@ -4165,8 +4482,9 @@
     playSoundEffect(appState?.config?.ui?.remSound || 'chime');
   }
 
-  function showReminderCard({ title, body, urgent, workId }) {
+  function showReminderCard({ title, body, urgent, workId, workDate }) {
     activeReminderWorkId = workId || null;
+    activeReminderWorkDate = workDate || null;
     const pop = document.getElementById('reminder-popup');
     if (!pop) return;
     pop.classList.toggle('urgent-rem', !!urgent);
@@ -4180,32 +4498,72 @@
     reminderAutoHide = setTimeout(() => pop.classList.add('hidden'), 12000);
   }
 
-  function checkReminders() {
+  async function checkReminders() {
     if (!appState || appState.config.ui.reminderEnabled === false) return;
+    if (appState.config.ui.fullscreenDnd !== false && window.SyncBridge.isFullscreenBusy) {
+      try {
+        if (await window.SyncBridge.isFullscreenBusy()) return;
+      } catch {}
+    }
     const todayStr = fmtDate(new Date());
     const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
     const { activeList } = getEffectiveCoursesForDate(todayStr, appState.config.ui.homeroomMode ? 'class' : 'my');
     for (const c of activeList) {
+      if (appState.config.ui.dedupConsecutive !== false && c.isSecondOfConsec) continue;
       const diff = toMin(c.start) - nowMin;
       const key = `${todayStr}:c:${c.courseId}:${c.start}`;
       if (diff >= 1 && diff <= 5 && !firedReminders.has(key)) {
         firedReminders.add(key);
-        showReminderCard({ title: `🔔 还有 ${diff} 分钟上课`, body: `<strong>${escapeHtml(c.title)}</strong><br/>上课时间：${c.start} - ${c.end}`, urgent: false });
+        const consecTag = c.isConsecutive ? '（连堂课）' : '';
+        showReminderCard({ title: `🔔 还有 ${diff} 分钟上课`, body: `<strong>${escapeHtml(c.title)}${consecTag}</strong><br/>上课时间：${c.start} - ${c.end}`, urgent: false });
         return;
       }
     }
     if (!appState.config.ui.homeroomMode) {
-      const wks = (appState.data.works || []).filter(w => !w.deleted && !w.done && w.date === todayStr);
+      const wks = (appState.data.works || []).filter(w => doesWorkMatchDate(w, todayStr) && !isWorkDoneOnDate(w, todayStr));
       for (const w of wks) {
         const diff = nowMin - toMin(w.start);
         const key = `${todayStr}:w:${w.id}:${w.start}`;
         if (diff >= 0 && diff <= 2 && !firedReminders.has(key)) {
           firedReminders.add(key);
-          showReminderCard({ title: '⏰ 待办事项已到点', body: `<strong>${escapeHtml(w.title)}</strong><br/>计划时间：${w.start} - ${w.end}`, urgent: !!w.urgent, workId: w.id });
+          showReminderCard({ title: '⏰ 待办事项已到点', body: `<strong>${escapeHtml(w.title)}</strong><br/>计划时间：${w.start} - ${w.end}`, urgent: !!w.urgent, workId: w.id, workDate: todayStr });
           return;
         }
       }
     }
+  }
+
+  function tickNowLineAndReminders() {
+    if (!appState) return;
+    const nowDate = new Date();
+    const todayStr = fmtDate(nowDate);
+    if (todayStr !== lastRenderedTodayStr) {
+      render();
+      return;
+    }
+    renderNextCountdown();
+    renderCountdownPill();
+    checkReminders();
+    if (currentView === 'month') return;
+    const range = getTimeRangeMinutes();
+    const nowMin = nowDate.getHours() * 60 + nowDate.getMinutes() + nowDate.getSeconds() / 60;
+    const showNowLine = nowMin >= range.start && nowMin <= range.end;
+    const nowTopPx = (nowMin - range.start) * PX_PER_MIN;
+    const nowTimeText = `${pad2(nowDate.getHours())}:${pad2(nowDate.getMinutes())}`;
+    const pill = document.getElementById('apple-now-pill');
+    if (pill) {
+      pill.style.display = showNowLine ? '' : 'none';
+      pill.style.top = `${nowTopPx}px`;
+      pill.textContent = nowTimeText;
+    }
+    document.querySelectorAll('.past-curtain').forEach(el => {
+      el.style.display = showNowLine ? '' : 'none';
+      el.style.height = `${Math.max(0, nowTopPx)}px`;
+    });
+    document.querySelectorAll('.apple-now-line, .apple-now-line-faint').forEach(el => {
+      el.style.display = showNowLine ? '' : 'none';
+      el.style.top = `${nowTopPx}px`;
+    });
   }
 
   let activeDayModeDate = null;
@@ -4225,6 +4583,7 @@
     bindGlobalEvents();
     appState = await window.SyncBridge.loadState();
     ensureClassTimetables();
+    ensureCountdowns();
     ensureUiPrefs();
     isUiLocked = !!appState?.config?.ui?.locked;
     render();
@@ -4240,10 +4599,8 @@
       if (appState?.config?.webdav?.password && appState.config.webdav.autoSync) performSync(true);
     }, 180000);
 
-    // 每 30 秒平滑推进苹果日历红线与已流逝遮罩
-    setInterval(() => {
-      if (currentView !== 'month') render();
-    }, 30000);
+    // 每 30 秒增量更新苹果红线、倒计时与到点提醒（跨午夜自动全量重绘）
+    setInterval(tickNowLineAndReminders, 30000);
   }
 
   init();

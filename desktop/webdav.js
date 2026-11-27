@@ -26,9 +26,29 @@ async function davRequest(cfg, url, method, body = null, extraHeaders = {}) {
     Authorization: buildAuthHeader(cfg.username.trim(), cfg.password.trim()),
     ...extraHeaders,
   };
-  const opts = { method, headers };
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 15000) : null;
+  const opts = { method, headers, ...(ctrl ? { signal: ctrl.signal } : {}) };
   if (body !== null && body !== undefined) opts.body = body;
-  return fetch(url, opts);
+  try {
+    return await fetch(url, opts);
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error('连接坚果云超时（15秒），请检查网络后重试');
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function pruneTombstones(arr = [], maxAgeMs = 60 * 86400 * 1000) {
+  if (!Array.isArray(arr)) return [];
+  const cutoff = Date.now() - maxAgeMs;
+  return arr.filter((item) => {
+    if (!item || !item.deleted) return true;
+    return (item.updatedAt || 0) >= cutoff;
+  });
 }
 
 async function testConnection(cfg) {
@@ -214,19 +234,31 @@ async function syncAll(cfg, localData) {
   ]);
 
   const mergedTimetable = mergeTimetable(localData.timetable || {}, remoteTt);
-  const mergedOverrides = mergeItemList(localData.overrides || [], (remoteOv && remoteOv.items) || []);
-  const mergedWorks = mergeItemList(localData.works || [], (remoteWk && remoteWk.items) || []);
+  mergedTimetable.courses = pruneTombstones(mergedTimetable.courses || []);
+  const mergedOverrides = pruneTombstones(mergeItemList(localData.overrides || [], (remoteOv && remoteOv.items) || []));
+  const mergedWorks = pruneTombstones(mergeItemList(localData.works || [], (remoteWk && remoteWk.items) || []));
+  const mergedCountdowns = pruneTombstones(mergeItemList(localData.countdowns || [], (remoteWk && remoteWk.countdowns) || []));
   const mergedClassTt = mergeClassTimetable({
     ...(localData.classTimetable || {}),
     classTimetables: localData.classTimetables,
     activeClassId: localData.activeClassId,
   }, remoteCt);
+  mergedClassTt.classTimetables = (mergedClassTt.classTimetables || []).map(ct => ({
+    ...ct,
+    courses: pruneTombstones(ct.courses || []),
+    overrides: pruneTombstones(ct.overrides || []),
+  }));
+  const primaryCls = mergedClassTt.classTimetables.find(c => c.id === mergedClassTt.activeClassId) || mergedClassTt.classTimetables[0];
+  if (primaryCls) {
+    mergedClassTt.courses = primaryCls.courses;
+    mergedClassTt.overrides = primaryCls.overrides;
+  }
 
   const now = Date.now();
   await Promise.all([
     putJsonFile(cfg, 'timetable.json', mergedTimetable),
     putJsonFile(cfg, 'overrides.json', { updatedAt: now, items: mergedOverrides }),
-    putJsonFile(cfg, 'works.json', { updatedAt: now, items: mergedWorks }),
+    putJsonFile(cfg, 'works.json', { updatedAt: now, items: mergedWorks, countdowns: mergedCountdowns }),
     putJsonFile(cfg, 'class_timetable.json', mergedClassTt),
   ]);
 
@@ -234,6 +266,7 @@ async function syncAll(cfg, localData) {
     timetable: mergedTimetable,
     overrides: mergedOverrides,
     works: mergedWorks,
+    countdowns: mergedCountdowns,
     classTimetable: mergedClassTt,
     classTimetables: mergedClassTt.classTimetables,
     activeClassId: mergedClassTt.activeClassId,
@@ -248,4 +281,5 @@ module.exports = {
   mergeItemList,
   mergeTimetable,
   mergeClassTimetable,
+  pruneTombstones,
 };
